@@ -1,0 +1,62 @@
+{
+  "name": "query-request",
+  "version": "1.0.0",
+  "description": "Extensible query filter parser and adapter pipeline for NestJS applications.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "nest build",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.js\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.js\" \"*.{json,md}\"",
+    "test": "pnpm build && node --test test/**/*.test.js",
+    "test:coverage": "pnpm build && node --test --experimental-test-coverage test/**/*.test.js",
+    "prepublishOnly": "pnpm lint && pnpm test"
+  },
+  "keywords": [
+    "nestjs",
+    "query",
+    "filter",
+    "sequelize",
+    "typeorm",
+    "adapter"
+  ],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.19",
+    "@nestjs/core": "^11.1.19",
+    "@nestjs/platform-express": "^11.1.19",
+    "sequelize": "^6.37.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.31.0",
+    "@nestjs/cli": "^11.0.10",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^8.39.1",
+    "@typescript-eslint/parser": "^8.39.1",
+    "eslint": "^9.31.0",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}
