@@ -41,7 +41,7 @@ registry.registerAdapterRegistration({
     supportsPagination: true,
   },
   metadata: {
-    family: 'sql',
+    family: 'sql' | 'document',
   },
 });
 ```

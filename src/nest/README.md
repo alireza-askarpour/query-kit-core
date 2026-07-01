@@ -19,6 +19,9 @@ The module is responsible for:
 
 - `SCFormat`
 - `SCFormatValidator`
+- `MCFormat`
+- `MCFormatValidator`
+- `MongooseAdapter`
 - `SequelizeAdapter`
 - `TypeOrmAdapter`
 
@@ -30,3 +33,4 @@ Supported runtime options:
 - `defaultOrm`
 - `enableValidation`
 - `validationOptions`
+- `mcValidationOptions`

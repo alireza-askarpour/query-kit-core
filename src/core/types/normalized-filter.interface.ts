@@ -1,5 +1,3 @@
-import { Includeable } from 'sequelize';
-
 export type FilterOperator =
   | 'eq'
   | 'neq'
@@ -27,7 +25,13 @@ export type FilterOperator =
   | 'date'
   | 'year'
   | 'month'
-  | 'day';
+  | 'day'
+  | 'elemMatch';
+
+export type RelationDirective =
+  | string
+  | Record<string, unknown>
+  | Array<string | Record<string, unknown>>;
 
 export interface NormalizedCondition {
   field: string;
@@ -78,7 +82,8 @@ export interface NormalizedFilter {
   page?: number;
   offset?: number;
   fields?: string[];
-  customInclude?: Includeable | Includeable[] | string[];
+  relationLoad?: RelationDirective;
+  customInclude?: RelationDirective;
   aggregations?: AggregationExpression[];
   groupBy?: GroupByExpression;
   having?: HavingCondition;

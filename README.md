@@ -15,7 +15,10 @@ The project is built around three concepts:
 ## Current capabilities
 
 - Built-in `SC` format using `field:operator:value`
+- Built-in `MC` format using `field:$operator:value`
 - Built-in `SC` format validator
+- Built-in `MC` format validator
+- Built-in adapter for `Mongoose`
 - Built-in adapters for `Sequelize` and `TypeORM`
 - Central `FilterProcessor` pipeline
 - Registry-based extension model for formats, validators, and adapters
@@ -28,12 +31,14 @@ src/
   adapters/
     adapter-bundles.ts
     sequelize/
+    mongoose/
     typeorm/
   core/
     contracts/
     services/
     types/
   formats/
+    mc/
     sc/
   nest/
   index.ts
@@ -47,6 +52,8 @@ More detailed documentation:
 - [Core](src/core/README.md)
 - [Formats](src/formats/README.md)
 - [SC Format](src/formats/sc/README.md)
+- [MC Format](src/formats/mc/README.md)
+- [Mongoose Adapter](src/adapters/mongoose/README.md)
 - [Adapters](src/adapters/README.md)
 - [Sequelize Adapter](src/adapters/sequelize/README.md)
 - [TypeORM Adapter](src/adapters/typeorm/README.md)
@@ -86,7 +93,10 @@ const result = processor.processWith({
 - `FilterProcessor`
 - `FilterRegistry`
 - `SCFormat`
+- `MCFormat`
 - `SCFormatValidator`
+- `MCFormatValidator`
+- `MongooseAdapter`
 - `SequelizeAdapter`
 - `TypeOrmAdapter`
 - `FilterModule`
@@ -106,6 +116,7 @@ Current normalized operators:
 - `isNull`, `isNotNull`
 - `exists`, `notExists`
 - `date`, `year`, `month`, `day`
+- `elemMatch`
 
 ## Development scripts
 

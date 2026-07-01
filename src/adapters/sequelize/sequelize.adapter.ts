@@ -175,7 +175,7 @@ export class SequelizeAdapter
     this.applySorting(normalized.sort ?? [], order, options);
 
     const include = this.normalizeIncludes(
-      normalized.customInclude,
+      normalized.relationLoad ?? normalized.customInclude,
       options.includeMap,
     );
     const attributes = this.buildAttributes(normalized, options);
@@ -225,7 +225,7 @@ export class SequelizeAdapter
   }
 
   private normalizeIncludes(
-    include?: Includeable | Includeable[] | string[],
+    include?: NormalizedFilter['relationLoad'],
     includeMap?: Record<string, Includeable>,
   ): Includeable[] {
     if (!include) {
@@ -239,7 +239,7 @@ export class SequelizeAdapter
         return includeMap?.[item] ?? item;
       }
 
-      return item;
+      return item as Includeable;
     });
   }
 

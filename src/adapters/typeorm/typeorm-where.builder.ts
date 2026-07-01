@@ -58,6 +58,9 @@ export function createTypeOrmOperatorHandlers(
       withParameter(`TO_CHAR(${field}, 'YYYY-MM') = :${parameterName}`, parameterName, value),
     day: (field, value, parameterName) =>
       withParameter(`EXTRACT(DAY FROM ${field}) = :${parameterName}`, parameterName, value),
+    elemMatch: () => {
+      throw new Error('Operator "elemMatch" is not supported in TypeORM adapter');
+    },
   };
 }
 

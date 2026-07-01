@@ -11,6 +11,7 @@ Formats define how a query syntax is interpreted.
 ## Current formats
 
 - `sc`
+- `mc`
 
 ## Recommended per-format structure
 

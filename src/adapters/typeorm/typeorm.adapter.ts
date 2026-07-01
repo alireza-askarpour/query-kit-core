@@ -57,7 +57,11 @@ export class TypeOrmAdapter
       this.buildCaseExpression(expression, index, options),
     );
     applyFieldSelection(queryBuilder, normalized.fields, options);
-    applyIncludes(queryBuilder, normalized.customInclude, options);
+    applyIncludes(
+      queryBuilder,
+      normalized.relationLoad ?? normalized.customInclude,
+      options,
+    );
     applySorting(queryBuilder, normalized.sort ?? [], options);
     applyPagination(queryBuilder, normalized, options);
 

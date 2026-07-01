@@ -13,6 +13,7 @@ Adapters convert a `NormalizedFilter` into ORM-native output.
 
 ## Current adapters
 
+- `mongoose`
 - `sequelize`
 - `typeorm`
 

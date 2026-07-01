@@ -104,7 +104,7 @@ export function applyFieldSelection<
 
 export function applyIncludes<TQueryBuilder extends TypeOrmQueryBuilderLike>(
   queryBuilder: TQueryBuilder,
-  include: NormalizedFilter['customInclude'],
+  include: NormalizedFilter['relationLoad'],
   options: TypeOrmAdapterOptions<TQueryBuilder>,
 ): void {
   if (!include) {

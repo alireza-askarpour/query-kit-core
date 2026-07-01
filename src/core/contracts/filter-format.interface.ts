@@ -1,5 +1,7 @@
-import { Includeable } from 'sequelize';
-import { NormalizedFilter } from '../types/normalized-filter.interface';
+import {
+  NormalizedFilter,
+  RelationDirective,
+} from '../types/normalized-filter.interface';
 
 export interface FilterFormat {
   name: string;
@@ -14,5 +16,6 @@ export type Query = {
   size?: number;
   offset?: number;
   fields?: string[];
-  customInclude?: Includeable | Includeable[] | string[];
+  relations?: RelationDirective;
+  customInclude?: RelationDirective;
 };

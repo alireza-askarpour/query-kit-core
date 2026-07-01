@@ -114,6 +114,7 @@ export class SCFormat implements FilterFormat {
         page: query.page,
         offset: query.offset,
         fields: query.fields,
+        relationLoad: query.relations ?? query.customInclude,
         customInclude: query.customInclude,
       };
     }
@@ -127,6 +128,7 @@ export class SCFormat implements FilterFormat {
       page: query.page,
       offset: query.offset,
       fields: query.fields ? [...query.fields] : undefined,
+      relationLoad: query.relations ?? query.customInclude,
       include: query.customInclude,
     };
 
@@ -163,6 +165,7 @@ export class SCFormat implements FilterFormat {
       page: directives.page,
       offset: directives.offset,
       fields: directives.fields,
+      relationLoad: directives.relationLoad,
       customInclude: directives.include,
     };
   }
@@ -186,6 +189,7 @@ export class SCFormat implements FilterFormat {
       page?: number;
       offset?: number;
       fields?: string[];
+      relationLoad?: Query['relations'];
       include?: Query['customInclude'];
     },
   ): void {
@@ -210,6 +214,7 @@ export class SCFormat implements FilterFormat {
         directives.fields = this.parseCommaSeparatedList(value, '@fields');
         break;
       case 'include':
+        directives.relationLoad = this.parseCommaSeparatedList(value, '@include');
         directives.include = this.parseCommaSeparatedList(value, '@include');
         break;
       default:
