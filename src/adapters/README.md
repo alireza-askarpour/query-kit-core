@@ -1,6 +1,6 @@
 # Adapters
 
-Adapters convert a `NormalizedFilter` into ORM-native output.
+Adapters convert a `FilterIR` into ORM-native output.
 
 ## Responsibilities
 

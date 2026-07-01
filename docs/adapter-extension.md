@@ -2,7 +2,7 @@
 
 ## Goal
 
-An adapter converts `NormalizedFilter` into an ORM-specific query representation.
+An adapter converts `FilterIR` into an ORM-specific query representation.
 
 ## Minimum requirements
 
@@ -12,7 +12,7 @@ Implement `QueryAdapter`:
 export class MyOrmAdapter implements QueryAdapter<MyOutput, MyOptions> {
   ormName = 'my-orm';
 
-  convert(normalized: NormalizedFilter, options?: MyOptions): MyOutput {
+  convert(normalized: FilterIR, options?: MyOptions): MyOutput {
     return {} as MyOutput;
   }
 }

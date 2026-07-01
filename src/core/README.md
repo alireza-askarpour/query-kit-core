@@ -1,6 +1,6 @@
 # Core
 
-The `core` layer contains the package contracts, normalized types, registry, and processing pipeline.
+The `core` layer contains the package contracts, neutral IR types, registry, and processing pipeline.
 
 ## Responsibilities
 
@@ -22,15 +22,21 @@ src/core/
 ## Main modules
 
 - `contracts/`: extension interfaces
-- `types/`: normalized filter model
+- `types/`: neutral filter IR and compatibility types
 - `services/filter-registry.service.ts`
 - `services/filter-processor.service.ts`
 
 ## Key concepts
 
+### `FilterIR`
+
+The shared neutral internal representation between formats and adapters.
+
+Backend-specific concerns should flow through `extensions` instead of being promoted into the neutral IR surface by default.
+
 ### `NormalizedFilter`
 
-The shared internal representation between formats and adapters.
+Backward-compatible alias shape for older adapters and consumers during the IR transition.
 
 ### `FilterRegistry`
 

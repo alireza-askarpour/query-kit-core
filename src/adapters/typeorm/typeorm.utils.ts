@@ -1,6 +1,8 @@
 import {
+  FilterIR,
+  getPagination,
+  getRelations,
   NormalizedCaseExpression,
-  NormalizedFilter,
   NormalizedSort,
 } from '../../core';
 import {
@@ -79,11 +81,12 @@ export function applySorting<TQueryBuilder extends TypeOrmQueryBuilderLike>(
 
 export function applyPagination<TQueryBuilder extends TypeOrmQueryBuilderLike>(
   queryBuilder: TQueryBuilder,
-  normalized: NormalizedFilter,
+  normalized: FilterIR,
   options: TypeOrmAdapterOptions<TQueryBuilder>,
 ): void {
-  const limit = getLimit(normalized.limit, options);
-  const offset = getOffset(normalized.page, normalized.offset, limit);
+  const pagination = getPagination(normalized);
+  const limit = getLimit(pagination.limit, options);
+  const offset = getOffset(pagination.page, pagination.offset, limit);
   queryBuilder.take(limit);
   queryBuilder.skip(offset);
 }
@@ -104,7 +107,7 @@ export function applyFieldSelection<
 
 export function applyIncludes<TQueryBuilder extends TypeOrmQueryBuilderLike>(
   queryBuilder: TQueryBuilder,
-  include: NormalizedFilter['relationLoad'],
+  include: ReturnType<typeof getRelations>,
   options: TypeOrmAdapterOptions<TQueryBuilder>,
 ): void {
   if (!include) {

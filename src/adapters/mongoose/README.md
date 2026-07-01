@@ -1,6 +1,6 @@
 # Mongoose Adapter
 
-The Mongoose adapter converts `NormalizedFilter` into a Mongoose `find()` query chain.
+The Mongoose adapter converts `FilterIR` into a Mongoose `find()` query chain.
 
 ## Responsibilities
 

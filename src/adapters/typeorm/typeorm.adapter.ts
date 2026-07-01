@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import {
+  FilterIR,
+  getPredicates,
+  getRelations,
+  getSorting,
+  getSqlFilterFeatures,
   NormalizedCaseExpression,
   NormalizedCondition,
-  NormalizedFilter,
   QueryAdapter,
 } from '../../core';
 import { assertSqlOperatorSupport } from '../sql-dialects';
@@ -46,7 +50,7 @@ export class TypeOrmAdapter
   }
 
   convert<TQueryBuilder extends TypeOrmQueryBuilderLike>(
-    normalized: NormalizedFilter,
+    normalized: FilterIR,
     options: TypeOrmAdapterOptions<TQueryBuilder>,
   ): TQueryBuilder {
     const queryBuilder = options.queryBuilder;
@@ -56,20 +60,21 @@ export class TypeOrmAdapter
       dialect,
     });
 
-    normalized.conditions.forEach((condition) => {
+    getPredicates(normalized).forEach((condition) => {
       this.applyCondition(queryBuilder, condition, options, operatorHandlers);
     });
 
-    applyCaseExpressions(queryBuilder, normalized.caseExpressions, (expression, index) =>
+    const sqlFeatures = getSqlFilterFeatures(normalized);
+    applyCaseExpressions(queryBuilder, sqlFeatures.caseExpressions, (expression, index) =>
       this.buildCaseExpression(expression, index, options, operatorHandlers),
     );
-    applyFieldSelection(queryBuilder, normalized.fields, options);
+    applyFieldSelection(queryBuilder, normalized.projection?.fields, options);
     applyIncludes(
       queryBuilder,
-      normalized.relationLoad ?? normalized.customInclude,
+      getRelations(normalized),
       options,
     );
-    applySorting(queryBuilder, normalized.sort ?? [], options);
+    applySorting(queryBuilder, getSorting(normalized), options);
     applyPagination(queryBuilder, normalized, options);
 
     return queryBuilder;

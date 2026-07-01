@@ -4,13 +4,13 @@ Extensible query filter parsing, validation, and ORM adapter pipeline for NestJS
 
 ## Overview
 
-`query-request` is a library-oriented package for turning query-string filters into normalized filter objects and then converting those filters into ORM-specific query shapes.
+`query-request` is a library-oriented package for turning query-string filters into a neutral filter IR and then converting that IR into ORM-specific query shapes.
 
 The project is built around three concepts:
 
 - `formats`: parse and optionally validate a query syntax
 - `core`: orchestrate parsing, validation, registry lookup, and adapter execution
-- `adapters`: convert normalized filters into ORM-native query representations
+- `adapters`: convert neutral filter IR into ORM-native query representations
 
 ## Current capabilities
 

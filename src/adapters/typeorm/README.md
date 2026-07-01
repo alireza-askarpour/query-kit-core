@@ -1,6 +1,6 @@
 # TypeORM Adapter
 
-The TypeORM adapter converts `NormalizedFilter` into `QueryBuilder` operations.
+The TypeORM adapter converts `FilterIR` into `QueryBuilder` operations.
 
 ## Design
 

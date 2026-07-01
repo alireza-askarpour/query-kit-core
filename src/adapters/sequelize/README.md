@@ -1,6 +1,6 @@
 # Sequelize Adapter
 
-The Sequelize adapter converts `NormalizedFilter` into a Sequelize query object.
+The Sequelize adapter converts `FilterIR` into a Sequelize query object.
 
 ## Output shape
 

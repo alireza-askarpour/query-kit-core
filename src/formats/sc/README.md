@@ -54,7 +54,7 @@ The SC format is intentionally split into focused modules:
 - parse filter syntax
 - parse directives
 - normalize operator aliases
-- build `NormalizedFilter`
+- build `FilterIR`
 
 ### `SCFormatValidator`
 

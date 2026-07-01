@@ -1,9 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  createFilterIR,
   FilterFormat,
   FilterOperator,
   NormalizedCondition,
-  NormalizedFilter,
   NormalizedSort,
   Query,
 } from '../../core';
@@ -30,28 +30,27 @@ export class MCFormat implements FilterFormat {
     elemmatch: 'elemMatch',
   };
 
-  parse(query: Query): NormalizedFilter {
+  parse(query: Query) {
     const filterString = query.filterString?.trim() ?? '';
 
     if (!filterString) {
-      return {
-        conditions: [],
-        sort: this.parseSortDirective(query.sortString),
-        limit: query.size,
-        page: query.page,
-        offset: query.offset,
-        fields: query.fields,
-        relationLoad: query.relations ?? query.customInclude,
+      return createFilterIR({
+        predicates: [],
+        sorting: this.parseSortDirective(query.sortString),
+        pagination: {
+          limit: query.size,
+          page: query.page,
+          offset: query.offset,
+        },
+        projection: query.fields ? { fields: query.fields } : undefined,
+        relations: query.relations ?? query.customInclude,
         customInclude: query.customInclude,
-      };
+      });
     }
 
     const segments = this.splitSegments(filterString);
     const conditions: NormalizedCondition[] = [];
-    const directives: Pick<
-      NormalizedFilter,
-      'sort' | 'limit' | 'page' | 'offset' | 'fields' | 'relationLoad' | 'customInclude'
-    > = {
+    const directives = {
       sort: this.parseSortDirective(query.sortString),
       limit: query.size,
       page: query.page,
@@ -70,16 +69,18 @@ export class MCFormat implements FilterFormat {
       conditions.push(this.parseCondition(segment));
     });
 
-    return {
-      conditions,
-      sort: directives.sort,
-      limit: directives.limit,
-      page: directives.page,
-      offset: directives.offset,
-      fields: directives.fields,
-      relationLoad: directives.relationLoad,
+    return createFilterIR({
+      predicates: conditions,
+      sorting: directives.sort,
+      pagination: {
+        limit: directives.limit,
+        page: directives.page,
+        offset: directives.offset,
+      },
+      projection: directives.fields ? { fields: directives.fields } : undefined,
+      relations: directives.relationLoad,
       customInclude: directives.customInclude,
-    };
+    });
   }
 
   private splitSegments(queryString: string): string[] {
@@ -95,10 +96,15 @@ export class MCFormat implements FilterFormat {
 
   private applyDirective(
     segment: string,
-    directives: Pick<
-      NormalizedFilter,
-      'sort' | 'limit' | 'page' | 'offset' | 'fields' | 'relationLoad' | 'customInclude'
-    >,
+    directives: {
+      sort: NormalizedSort[];
+      limit?: number;
+      page?: number;
+      offset?: number;
+      fields?: string[];
+      relationLoad?: Query['relations'];
+      customInclude?: Query['customInclude'];
+    },
   ): void {
     const [rawName, rawValue = ''] = this.splitByUnescapedColon(segment);
     const name = rawName.slice(1).trim().toLowerCase();

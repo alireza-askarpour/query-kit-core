@@ -1,10 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  createFilterIR,
   FilterFormat,
   FilterOperator,
   NormalizedCaseExpression,
   NormalizedCondition,
-  NormalizedFilter,
   NormalizedSort,
   Query,
 } from '../../core';
@@ -102,21 +102,27 @@ export class SCFormat implements FilterFormat {
     'day',
   ];
 
-  public parse(query: Query): NormalizedFilter {
+  public parse(query: Query) {
     const filterString = query.filterString?.trim() ?? '';
 
     if (!filterString) {
-      return {
-        conditions: [],
-        caseExpressions: [],
-        sort: this.parseSort(query.sortString),
-        limit: query.size,
-        page: query.page,
-        offset: query.offset,
-        fields: query.fields,
-        relationLoad: query.relations ?? query.customInclude,
+      return createFilterIR({
+        predicates: [],
+        sorting: this.parseSort(query.sortString),
+        pagination: {
+          limit: query.size,
+          page: query.page,
+          offset: query.offset,
+        },
+        projection: query.fields ? { fields: query.fields } : undefined,
+        relations: query.relations ?? query.customInclude,
         customInclude: query.customInclude,
-      };
+        extensions: {
+          sql: {
+            caseExpressions: [],
+          },
+        },
+      });
     }
 
     const segments = this.splitSegments(filterString);
@@ -155,19 +161,25 @@ export class SCFormat implements FilterFormat {
       conditions.push(condition);
     }
 
-    return {
-      conditions,
-      caseExpressions,
-      sort: directives.sort.length
+    return createFilterIR({
+      predicates: conditions,
+      sorting: directives.sort.length
         ? directives.sort
         : this.parseSort(query.sortString),
-      limit: directives.limit,
-      page: directives.page,
-      offset: directives.offset,
-      fields: directives.fields,
-      relationLoad: directives.relationLoad,
+      pagination: {
+        limit: directives.limit,
+        page: directives.page,
+        offset: directives.offset,
+      },
+      projection: directives.fields ? { fields: directives.fields } : undefined,
+      relations: directives.relationLoad,
       customInclude: directives.include,
-    };
+      extensions: {
+        sql: {
+          caseExpressions,
+        },
+      },
+    });
   }
 
   private splitSegments(queryString: string): string[] {

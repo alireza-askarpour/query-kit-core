@@ -1,5 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { NormalizedCondition, NormalizedFilter, QueryAdapter } from '../../core';
+import {
+  FilterIR,
+  getPagination,
+  getPredicates,
+  getProjectionFields,
+  getRelations,
+  getSorting,
+  NormalizedCondition,
+  QueryAdapter,
+} from '../../core';
 
 export interface MongoosePopulateDefinition {
   path: string;
@@ -42,19 +51,20 @@ export class MongooseAdapter
   ormName = 'mongoose';
 
   convert<TResult = unknown>(
-    normalized: NormalizedFilter,
+    normalized: FilterIR,
     options: MongooseAdapterOptions<TResult>,
   ): MongooseQueryLike<TResult> {
-    const filter = this.buildFilter(normalized.conditions, options.fieldMap);
-    const projection = this.buildProjection(normalized.fields, options.fieldMap);
-    const query = options.model.find(filter, projection);
-    const sort = this.buildSort(normalized.sort, options.fieldMap);
-    const limit = this.getLimit(normalized.limit, options);
-    const offset = this.getOffset(normalized.page, normalized.offset, limit);
-    const populate = this.buildPopulate(
-      normalized.relationLoad ?? normalized.customInclude,
-      options.populateMap,
+    const filter = this.buildFilter(getPredicates(normalized), options.fieldMap);
+    const projection = this.buildProjection(
+      getProjectionFields(normalized),
+      options.fieldMap,
     );
+    const query = options.model.find(filter, projection);
+    const sort = this.buildSort(getSorting(normalized), options.fieldMap);
+    const pagination = getPagination(normalized);
+    const limit = this.getLimit(pagination.limit, options);
+    const offset = this.getOffset(pagination.page, pagination.offset, limit);
+    const populate = this.buildPopulate(getRelations(normalized), options.populateMap);
 
     if (Object.keys(sort).length > 0) {
       query.sort(sort);
@@ -138,7 +148,7 @@ export class MongooseAdapter
   }
 
   private buildSort(
-    sort: NormalizedFilter['sort'],
+    sort: ReturnType<typeof getSorting>,
     fieldMap?: Record<string, string>,
   ): Record<string, 1 | -1> {
     return (sort ?? []).reduce<Record<string, 1 | -1>>((accumulator, item) => {
@@ -160,7 +170,7 @@ export class MongooseAdapter
   }
 
   private buildPopulate(
-    relationLoad: NormalizedFilter['relationLoad'],
+    relationLoad: ReturnType<typeof getRelations>,
     populateMap?: Record<string, MongoosePopulateDefinition | string>,
   ): Array<string | MongoosePopulateDefinition> {
     if (!relationLoad) {

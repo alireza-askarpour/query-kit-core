@@ -15,9 +15,15 @@ import {
 } from 'sequelize';
 
 import {
+  FilterIR,
+  getPagination,
+  getPredicates,
+  getProjectionFields,
+  getRelations,
+  getSorting,
+  getSqlFilterFeatures,
   NormalizedCaseExpression,
   NormalizedCondition,
-  NormalizedFilter,
   NormalizedSort,
   QueryAdapter,
 } from '../../core';
@@ -62,32 +68,33 @@ export class SequelizeAdapter
   ormName = 'sequelize';
 
   convert(
-    normalized: NormalizedFilter,
+    normalized: FilterIR,
     options: SequelizeAdapterOptions,
   ): SequelizeQueryResult {
     const dialect = this.resolveDialect(options);
     const where: MutableWhere = {};
     const order: OrderItem[] = [];
     const operatorHandlers = this.createOperatorHandlers(dialect);
+    const pagination = getPagination(normalized);
 
-    for (const condition of normalized.conditions) {
+    for (const condition of getPredicates(normalized)) {
       this.applyCondition(condition, where, options, operatorHandlers, dialect);
     }
 
-    this.applySorting(normalized.sort ?? [], order, options);
+    this.applySorting(getSorting(normalized), order, options);
 
     const include = this.normalizeIncludes(
-      normalized.relationLoad ?? normalized.customInclude,
+      getRelations(normalized),
       options.includeMap,
     );
     const attributes = this.buildAttributes(normalized, options, dialect);
-    const limit = this.getLimit(normalized.limit, options);
+    const limit = this.getLimit(pagination.limit, options);
 
     return {
       where,
       order,
       limit,
-      offset: this.getOffset(normalized.page, normalized.offset, limit),
+      offset: this.getOffset(pagination.page, pagination.offset, limit),
       attributes,
       include: include.length ? include : undefined,
     };
@@ -253,7 +260,7 @@ export class SequelizeAdapter
   }
 
   private normalizeIncludes(
-    include?: NormalizedFilter['relationLoad'],
+    include?: ReturnType<typeof getRelations>,
     includeMap?: Record<string, Includeable>,
   ): Includeable[] {
     if (!include) {
@@ -272,12 +279,14 @@ export class SequelizeAdapter
   }
 
   private buildAttributes(
-    normalized: NormalizedFilter,
+    normalized: FilterIR,
     options: SequelizeAdapterOptions,
     dialect: SqlDialect,
   ): FindAttributeOptions | undefined {
-    const baseFields = normalized.fields?.length ? [...normalized.fields] : [];
-    const caseAttributes = (normalized.caseExpressions ?? []).map((expression) =>
+    const projectionFields = getProjectionFields(normalized);
+    const sqlFeatures = getSqlFilterFeatures(normalized);
+    const baseFields = projectionFields?.length ? [...projectionFields] : [];
+    const caseAttributes = (sqlFeatures.caseExpressions ?? []).map((expression) =>
       this.buildCaseAttribute(expression, options, dialect),
     );
 

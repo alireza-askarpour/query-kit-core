@@ -12,10 +12,10 @@ Implement a new `FilterFormat`:
 export class MyFormat implements FilterFormat {
   name = 'my-format';
 
-  parse(query: Query): NormalizedFilter {
-    return {
-      conditions: [],
-    };
+  parse(query: Query): FilterIR {
+    return createFilterIR({
+      predicates: [],
+    });
   }
 }
 ```
@@ -53,4 +53,5 @@ registry.registerFormatRegistration({
 - keep parsing separate from validation
 - keep schema rules separate from value parsing
 - avoid putting all rules in one large class
-- keep normalized output consistent with `NormalizedFilter`
+- keep neutral output consistent with `FilterIR`
+- use `createFilterIR(...)` when compatibility with legacy consumers matters

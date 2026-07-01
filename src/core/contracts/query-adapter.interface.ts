@@ -1,9 +1,9 @@
-import { NormalizedFilter } from '../types/normalized-filter.interface';
+import { FilterIR } from '../types/normalized-filter.interface';
 
 export interface QueryAdapter<TQueryBuilder = unknown, TOptions = unknown> {
   ormName: string;
   convert(
-    normalized: NormalizedFilter,
+    normalized: FilterIR,
     options?: TOptions,
   ): Promise<TQueryBuilder> | TQueryBuilder;
 }

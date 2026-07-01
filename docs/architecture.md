@@ -19,7 +19,7 @@ The `core` layer defines:
 - contracts
 - runtime pipeline
 - registry
-- normalized filter types
+- neutral filter IR types
 
 It does not know the implementation details of a specific query syntax or a specific ORM.
 
@@ -29,7 +29,7 @@ Each format is responsible for:
 
 - parsing a query syntax
 - optionally validating the syntax
-- producing normalized filter data
+- producing neutral filter IR
 
 A format can have:
 
@@ -43,7 +43,7 @@ A format can have:
 
 Each adapter is responsible for:
 
-- converting `NormalizedFilter` into ORM-specific query output
+- converting `FilterIR` into ORM-specific query output
 - supporting the subset of operators that the ORM can express
 - exposing a stable `ormName`
 
@@ -84,9 +84,9 @@ This supports future growth without changing the registry shape for every new OR
 1. A request enters `FilterProcessor`
 2. The processor resolves the format
 3. Validation runs if enabled
-4. The format parses the query into a normalized structure
+4. The format parses the query into a neutral IR structure
 5. The processor resolves the adapter
-6. The adapter converts the normalized structure into ORM-native output
+6. The adapter converts the neutral IR structure into ORM-native output
 
 ## Open/closed principle
 

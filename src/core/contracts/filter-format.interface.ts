@@ -1,12 +1,12 @@
 import {
-  NormalizedFilter,
+  FilterIR,
   RelationDirective,
 } from '../types/normalized-filter.interface';
 
 export interface FilterFormat {
   name: string;
-  parse(query: Query): NormalizedFilter;
-  serialize?(filter: NormalizedFilter): string;
+  parse(query: Query): FilterIR;
+  serialize?(filter: FilterIR): string;
 }
 
 export type Query = {

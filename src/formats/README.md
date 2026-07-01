@@ -4,7 +4,7 @@ Formats define how a query syntax is interpreted.
 
 ## Responsibilities
 
-- parse a query string into `NormalizedFilter`
+- parse a query string into `FilterIR`
 - optionally validate the syntax and values
 - normalize operators and directive semantics
 
