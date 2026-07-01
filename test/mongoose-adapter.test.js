@@ -97,3 +97,61 @@ test('mongoose adapter builds query chain from normalized filter', () => {
     { path: 'orders', select: 'number total' },
   ]);
 });
+
+test('mongoose adapter supports logical groups and negation', () => {
+  const adapter = new MongooseAdapter();
+  const model = new MockModel();
+
+  adapter.convert(
+    {
+      predicates: [
+        { field: 'status', operator: 'eq', value: 'active' },
+        { field: 'status', operator: 'eq', value: 'pending' },
+        { field: 'deletedAt', operator: 'exists', value: true },
+      ],
+      expression: {
+        kind: 'group',
+        operator: 'and',
+        children: [
+          {
+            kind: 'group',
+            operator: 'or',
+            children: [
+              {
+                kind: 'predicate',
+                predicate: { field: 'status', operator: 'eq', value: 'active' },
+              },
+              {
+                kind: 'predicate',
+                predicate: { field: 'status', operator: 'eq', value: 'pending' },
+              },
+            ],
+          },
+          {
+            kind: 'not',
+            child: {
+              kind: 'predicate',
+              predicate: {
+                field: 'deletedAt',
+                operator: 'exists',
+                value: true,
+              },
+            },
+          },
+        ],
+      },
+    },
+    { model },
+  );
+
+  assert.deepEqual(model.calls[0].filter, {
+    $and: [
+      {
+        $or: [{ status: 'active' }, { status: 'pending' }],
+      },
+      {
+        $nor: [{ deletedAt: { $exists: true } }],
+      },
+    ],
+  });
+});

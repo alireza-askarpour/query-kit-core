@@ -39,6 +39,27 @@ export interface FilterPredicate {
   value: unknown;
 }
 
+export interface FilterPredicateNode {
+  kind: 'predicate';
+  predicate: FilterPredicate;
+}
+
+export interface FilterLogicalGroupNode {
+  kind: 'group';
+  operator: 'and' | 'or';
+  children: FilterExpressionNode[];
+}
+
+export interface FilterNotNode {
+  kind: 'not';
+  child: FilterExpressionNode;
+}
+
+export type FilterExpressionNode =
+  | FilterPredicateNode
+  | FilterLogicalGroupNode
+  | FilterNotNode;
+
 export interface SortInstruction {
   field: string;
   direction: 'asc' | 'desc';
@@ -103,6 +124,7 @@ export interface FilterIrExtensions {
 
 export interface FilterIR {
   predicates: FilterPredicate[];
+  expression?: FilterExpressionNode;
   sorting?: SortInstruction[];
   pagination?: PaginationInstruction;
   projection?: ProjectionInstruction;
@@ -112,6 +134,7 @@ export interface FilterIR {
 
 export interface NormalizedFilter extends FilterIR {
   conditions: FilterPredicate[];
+  logicalExpression?: FilterExpressionNode;
   sort?: SortInstruction[];
   limit?: number;
   page?: number;
@@ -132,6 +155,7 @@ export type NormalizedCaseExpression = FilterCaseExpression;
 
 export interface CreateFilterIrInput {
   predicates?: FilterPredicate[];
+  expression?: FilterExpressionNode;
   sorting?: SortInstruction[];
   pagination?: PaginationInstruction;
   projection?: ProjectionInstruction;
@@ -142,6 +166,7 @@ export interface CreateFilterIrInput {
 
 export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
   const predicates = input.predicates ?? [];
+  const expression = input.expression;
   const sorting = input.sorting;
   const pagination = input.pagination;
   const projection = input.projection;
@@ -150,12 +175,14 @@ export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
 
   return {
     predicates,
+    expression,
     sorting,
     pagination,
     projection,
     relations,
     extensions: input.extensions,
     conditions: predicates,
+    logicalExpression: expression,
     sort: sorting,
     limit: pagination?.limit,
     page: pagination?.page,
@@ -170,8 +197,33 @@ export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
   };
 }
 
+export function createPredicateNode(predicate: FilterPredicate): FilterPredicateNode {
+  return { kind: 'predicate', predicate };
+}
+
+export function createLogicalGroupNode(
+  operator: 'and' | 'or',
+  children: FilterExpressionNode[],
+): FilterLogicalGroupNode {
+  return { kind: 'group', operator, children };
+}
+
+export function createNotNode(child: FilterExpressionNode): FilterNotNode {
+  return { kind: 'not', child };
+}
+
 export function getPredicates(filter: FilterIR | NormalizedFilter): FilterPredicate[] {
-  return filter.predicates ?? (filter as NormalizedFilter).conditions ?? [];
+  const directPredicates = filter.predicates ?? (filter as NormalizedFilter).conditions;
+  if (directPredicates?.length) {
+    return directPredicates;
+  }
+
+  const expression = getFilterExpression(filter);
+  if (!expression) {
+    return [];
+  }
+
+  return collectPredicates(expression);
 }
 
 export function getSorting(filter: FilterIR | NormalizedFilter): SortInstruction[] {
@@ -217,4 +269,38 @@ export function getSqlFilterFeatures(
       having: (filter as NormalizedFilter).having,
     }
   );
+}
+
+export function getFilterExpression(
+  filter: FilterIR | NormalizedFilter,
+): FilterExpressionNode | undefined {
+  return filter.expression ?? (filter as NormalizedFilter).logicalExpression;
+}
+
+export function hasComplexLogicalExpression(
+  filter: FilterIR | NormalizedFilter,
+): boolean {
+  const expression = getFilterExpression(filter);
+  if (!expression) {
+    return false;
+  }
+
+  return expression.kind !== 'predicate';
+}
+
+function collectPredicates(expression: FilterExpressionNode): FilterPredicate[] {
+  switch (expression.kind) {
+    case 'predicate':
+      return [expression.predicate];
+    case 'not':
+      return collectPredicates(expression.child);
+    case 'group':
+      return expression.children.flatMap((child) => collectPredicates(child));
+    default:
+      return assertNeverExpression(expression);
+  }
+}
+
+function assertNeverExpression(expression: never): never {
+  throw new Error(`Unhandled filter expression node: ${JSON.stringify(expression)}`);
 }

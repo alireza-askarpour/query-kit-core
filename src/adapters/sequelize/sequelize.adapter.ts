@@ -16,11 +16,14 @@ import {
 
 import {
   FilterIR,
+  FilterExpressionNode,
+  getFilterExpression,
   getPagination,
   getPredicates,
   getProjectionFields,
   getRelations,
   getSorting,
+  hasComplexLogicalExpression,
   getSqlFilterFeatures,
   NormalizedCaseExpression,
   NormalizedCondition,
@@ -61,6 +64,8 @@ type MutableWhere = WhereAttributeHash<Attributes<any>> & {
   [Op.and]?: Array<ReturnType<typeof Sequelize.where>>;
 };
 
+type SequelizeWhereNode = Record<string | symbol, unknown>;
+
 @Injectable()
 export class SequelizeAdapter
   implements QueryAdapter<SequelizeQueryResult, SequelizeAdapterOptions>
@@ -77,8 +82,19 @@ export class SequelizeAdapter
     const operatorHandlers = this.createOperatorHandlers(dialect);
     const pagination = getPagination(normalized);
 
-    for (const condition of getPredicates(normalized)) {
-      this.applyCondition(condition, where, options, operatorHandlers, dialect);
+    if (hasComplexLogicalExpression(normalized)) {
+      const expression = getFilterExpression(normalized);
+
+      if (expression) {
+        Object.assign(
+          where,
+          this.buildLogicalWhere(expression, options, operatorHandlers, dialect),
+        );
+      }
+    } else {
+      for (const condition of getPredicates(normalized)) {
+        this.applyCondition(condition, where, options, operatorHandlers, dialect);
+      }
     }
 
     this.applySorting(getSorting(normalized), order, options);
@@ -122,6 +138,45 @@ export class SequelizeAdapter
     }
 
     handler(resolvedField, condition.value, where);
+  }
+
+  private buildLogicalWhere(
+    expression: FilterExpressionNode,
+    options: SequelizeAdapterOptions,
+    operatorHandlers: Record<string, SequelizeOperatorHandler>,
+    dialect: SqlDialect,
+  ): SequelizeWhereNode {
+    switch (expression.kind) {
+      case 'predicate': {
+        const where: MutableWhere = {};
+        this.applyCondition(
+          expression.predicate,
+          where,
+          options,
+          operatorHandlers,
+          dialect,
+        );
+        return where;
+      }
+      case 'not':
+        return {
+          [Op.not]: this.buildLogicalWhere(
+            expression.child,
+            options,
+            operatorHandlers,
+            dialect,
+          ),
+        };
+      case 'group':
+        return {
+          [expression.operator === 'and' ? Op.and : Op.or]: expression.children.map(
+            (child) =>
+              this.buildLogicalWhere(child, options, operatorHandlers, dialect),
+          ),
+        };
+      default:
+        return this.assertNeverExpression(expression);
+    }
   }
 
   private createOperatorHandlers(
@@ -641,5 +696,9 @@ export class SequelizeAdapter
 
   private assertNeverDialect(dialect: never): never {
     throw new Error(`Unhandled SQL dialect "${dialect}"`);
+  }
+
+  private assertNeverExpression(expression: never): never {
+    throw new Error(`Unhandled filter expression node: ${JSON.stringify(expression)}`);
   }
 }

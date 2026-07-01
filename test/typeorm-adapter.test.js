@@ -247,6 +247,60 @@ test('supports month and day operators plus offset override', () => {
   assert.equal(queryBuilder.skipCalls[0], 7);
 });
 
+test('supports logical groups and negation in a single where clause', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  adapter.convert(
+    {
+      predicates: [
+        { field: 'status', operator: 'eq', value: 'active' },
+        { field: 'status', operator: 'eq', value: 'pending' },
+        { field: 'deletedAt', operator: 'exists', value: true },
+      ],
+      expression: {
+        kind: 'group',
+        operator: 'and',
+        children: [
+          {
+            kind: 'group',
+            operator: 'or',
+            children: [
+              {
+                kind: 'predicate',
+                predicate: { field: 'status', operator: 'eq', value: 'active' },
+              },
+              {
+                kind: 'predicate',
+                predicate: { field: 'status', operator: 'eq', value: 'pending' },
+              },
+            ],
+          },
+          {
+            kind: 'not',
+            child: {
+              kind: 'predicate',
+              predicate: {
+                field: 'deletedAt',
+                operator: 'exists',
+                value: true,
+              },
+            },
+          },
+        ],
+      },
+    },
+    { queryBuilder, rootAlias: 'user' },
+  );
+
+  assert.equal(queryBuilder.whereCalls.length, 1);
+  assert.match(queryBuilder.whereCalls[0].condition, /\)\s+AND\s+\(NOT/);
+  assert.deepEqual(queryBuilder.whereCalls[0].parameters, {
+    status_eq_0_0: 'active',
+    status_eq_0_1: 'pending',
+  });
+});
+
 test('covers remaining comparison and string operators plus year branch', () => {
   const adapter = createAdapter();
   const queryBuilder = createBuilder();

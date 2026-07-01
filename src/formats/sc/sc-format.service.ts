@@ -1,13 +1,23 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  createLogicalGroupNode,
+  createNotNode,
+  createPredicateNode,
   createFilterIR,
   FilterFormat,
+  FilterExpressionNode,
   FilterOperator,
+  getPredicates,
   NormalizedCaseExpression,
   NormalizedCondition,
   NormalizedSort,
   Query,
 } from '../../core';
+import {
+  parseRawLogicalExpression,
+  RawExpressionNode,
+  splitTopLevelSegments,
+} from './sc-logical-expression.parser';
 
 @Injectable()
 export class SCFormat implements FilterFormat {
@@ -128,6 +138,7 @@ export class SCFormat implements FilterFormat {
     const segments = this.splitSegments(filterString);
     const conditions: NormalizedCondition[] = [];
     const caseExpressions: NormalizedCaseExpression[] = [];
+    const expressionSegments: string[] = [];
     const directives = {
       sort: [] as NormalizedSort[],
       limit: query.size,
@@ -156,6 +167,38 @@ export class SCFormat implements FilterFormat {
         continue;
       }
 
+      expressionSegments.push(segment);
+    }
+
+    const expressionInput = expressionSegments.join(';');
+
+    if (this.containsLogicalSyntax(expressionInput)) {
+      const expression = this.parseLogicalExpression(expressionInput);
+      conditions.push(...getPredicates({ predicates: [], expression }));
+
+      return createFilterIR({
+        predicates: conditions,
+        expression,
+        sorting: directives.sort.length
+          ? directives.sort
+          : this.parseSort(query.sortString),
+        pagination: {
+          limit: directives.limit,
+          page: directives.page,
+          offset: directives.offset,
+        },
+        projection: directives.fields ? { fields: directives.fields } : undefined,
+        relations: directives.relationLoad,
+        customInclude: directives.include,
+        extensions: {
+          sql: {
+            caseExpressions,
+          },
+        },
+      });
+    }
+
+    for (const segment of expressionSegments) {
       const condition = this.parseCondition(segment);
       this.validateCondition(condition);
       conditions.push(condition);
@@ -183,10 +226,70 @@ export class SCFormat implements FilterFormat {
   }
 
   private splitSegments(queryString: string): string[] {
-    return queryString
-      .split(/(?<!\\);/)
+    return splitTopLevelSegments(queryString)
       .map((segment) => segment.replace(/\\;/g, ';').trim())
       .filter(Boolean);
+  }
+
+  private containsLogicalSyntax(value: string): boolean {
+    let escaped = false;
+
+    for (const character of value) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (character === '\\') {
+        escaped = true;
+        continue;
+      }
+
+      if (character === '|' || character === '!' || character === '(' || character === ')') {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private parseLogicalExpression(input: string): FilterExpressionNode {
+    try {
+      const rawExpression = parseRawLogicalExpression(input);
+
+      if (!rawExpression) {
+        throw new BadRequestException('Logical expression cannot be empty');
+      }
+
+      return this.mapRawExpression(rawExpression);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Invalid logical expression',
+      );
+    }
+  }
+
+  private mapRawExpression(rawExpression: RawExpressionNode): FilterExpressionNode {
+    switch (rawExpression.kind) {
+      case 'predicate': {
+        const condition = this.parseCondition(rawExpression.raw);
+        this.validateCondition(condition);
+        return createPredicateNode(condition);
+      }
+      case 'not':
+        return createNotNode(this.mapRawExpression(rawExpression.child));
+      case 'group':
+        return createLogicalGroupNode(
+          rawExpression.operator,
+          rawExpression.children.map((child) => this.mapRawExpression(child)),
+        );
+      default:
+        return this.assertNeverRawExpression(rawExpression);
+    }
   }
 
   private isDirective(segment: string): boolean {
@@ -710,5 +813,11 @@ export class SCFormat implements FilterFormat {
     }
 
     return normalized;
+  }
+
+  private assertNeverRawExpression(expression: never): never {
+    throw new BadRequestException(
+      `Unhandled raw expression node: ${JSON.stringify(expression)}`,
+    );
   }
 }

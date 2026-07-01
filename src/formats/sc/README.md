@@ -19,6 +19,20 @@ name:contains:john
 createdAt:year:2024
 ```
 
+Logical groups:
+
+```text
+(status:eq:active|status:eq:pending);price:gt:100
+!(deletedAt:exists:true|archived:eq:true)
+```
+
+Operators for grouping:
+
+- `;` => `and`
+- `|` => `or`
+- `!` => `not`
+- `(...)` => nested group
+
 ## Directives
 
 Supported directives inside the query string:

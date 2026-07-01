@@ -1,11 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import {
   FilterIR,
+  FilterExpressionNode,
+  getFilterExpression,
   getPagination,
   getPredicates,
   getProjectionFields,
   getRelations,
   getSorting,
+  hasComplexLogicalExpression,
   NormalizedCondition,
   QueryAdapter,
 } from '../../core';
@@ -54,7 +57,12 @@ export class MongooseAdapter
     normalized: FilterIR,
     options: MongooseAdapterOptions<TResult>,
   ): MongooseQueryLike<TResult> {
-    const filter = this.buildFilter(getPredicates(normalized), options.fieldMap);
+    const filter = hasComplexLogicalExpression(normalized)
+      ? this.buildExpressionFilter(
+          getFilterExpression(normalized),
+          options.fieldMap,
+        )
+      : this.buildFilter(getPredicates(normalized), options.fieldMap);
     const projection = this.buildProjection(
       getProjectionFields(normalized),
       options.fieldMap,
@@ -110,6 +118,32 @@ export class MongooseAdapter
       accumulator[field] = nextValue;
       return accumulator;
     }, {});
+  }
+
+  private buildExpressionFilter(
+    expression: FilterExpressionNode | undefined,
+    fieldMap?: Record<string, string>,
+  ): Record<string, unknown> {
+    if (!expression) {
+      return {};
+    }
+
+    switch (expression.kind) {
+      case 'predicate':
+        return this.buildFilter([expression.predicate], fieldMap);
+      case 'not':
+        return {
+          $nor: [this.buildExpressionFilter(expression.child, fieldMap)],
+        };
+      case 'group':
+        return {
+          [expression.operator === 'and' ? '$and' : '$or']: expression.children.map(
+            (child) => this.buildExpressionFilter(child, fieldMap),
+          ),
+        };
+      default:
+        return this.assertNeverExpression(expression);
+    }
   }
 
   private mapOperator(condition: NormalizedCondition): unknown {
@@ -195,9 +229,15 @@ export class MongooseAdapter
   }
 
   private isPopulateDefinition(
-    value: Record<string, unknown>,
+    value: unknown,
   ): value is MongoosePopulateDefinition {
-    return typeof value.path === 'string' && value.path.length > 0;
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      'path' in value &&
+      typeof value.path === 'string' &&
+      value.path.length > 0
+    );
   }
 
   private getLimit(
@@ -224,5 +264,9 @@ export class MongooseAdapter
     }
 
     return (page - 1) * limit;
+  }
+
+  private assertNeverExpression(expression: never): never {
+    throw new Error(`Unhandled filter expression node: ${JSON.stringify(expression)}`);
   }
 }
