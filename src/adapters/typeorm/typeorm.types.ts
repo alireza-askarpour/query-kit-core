@@ -1,4 +1,5 @@
 import { NormalizedCondition } from '../../core';
+import { SqlDialect } from '../sql-dialects';
 
 export interface TypeOrmQueryBuilderLike {
   andWhere(condition: string, parameters?: Record<string, unknown>): this;
@@ -21,6 +22,7 @@ export interface TypeOrmAdapterOptions<
   TQueryBuilder extends TypeOrmQueryBuilderLike = TypeOrmQueryBuilderLike,
 > {
   queryBuilder: TQueryBuilder;
+  dialect?: SqlDialect;
   rootAlias?: string;
   fieldMap?: Record<string, string>;
   includeMap?: Record<string, TypeOrmJoinDefinition>;
@@ -41,6 +43,7 @@ export type TypeOrmOperatorHandler = (
 
 export interface TypeOrmClauseBuilderDependencies {
   escapeLiteral(value: unknown): string;
+  dialect: SqlDialect;
 }
 
 export type SupportedTypeOrmOperator = NormalizedCondition['operator'];

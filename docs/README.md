@@ -5,6 +5,7 @@ This folder contains package-level guides that describe the architecture, extens
 ## Documents
 
 - [Architecture](architecture.md)
+- [SQL dialect support](sql-dialect-support.md)
 - [Format extension guide](format-extension.md)
 - [Adapter extension guide](adapter-extension.md)
 - [Packaging guide](packaging.md)

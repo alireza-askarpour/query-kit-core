@@ -412,3 +412,88 @@ test('throws on malformed between and array clauses', () => {
     /non-empty array/,
   );
 });
+
+test('typeorm adapter emits mysql-specific date expressions', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  adapter.convert(
+    {
+      conditions: [
+        { field: 'createdAt', operator: 'year', value: 2024 },
+        { field: 'createdAt', operator: 'month', value: '2024-05' },
+        { field: 'createdAt', operator: 'day', value: 15 },
+      ],
+    },
+    { queryBuilder, dialect: 'mysql' },
+  );
+
+  assert.deepEqual(queryBuilder.whereCalls[0], {
+    condition: 'YEAR(entity.createdAt) = :createdAt_year',
+    parameters: { createdAt_year: 2024 },
+  });
+  assert.deepEqual(queryBuilder.whereCalls[1], {
+    condition: "DATE_FORMAT(entity.createdAt, '%Y-%m') = :createdAt_month",
+    parameters: { createdAt_month: '2024-05' },
+  });
+  assert.deepEqual(queryBuilder.whereCalls[2], {
+    condition: 'DAY(entity.createdAt) = :createdAt_day',
+    parameters: { createdAt_day: 15 },
+  });
+});
+
+test('typeorm adapter emits sqlite-specific date expressions', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  adapter.convert(
+    {
+      conditions: [
+        { field: 'createdAt', operator: 'year', value: 2024 },
+        { field: 'createdAt', operator: 'month', value: '2024-05' },
+        { field: 'createdAt', operator: 'day', value: 15 },
+      ],
+    },
+    { queryBuilder, dialect: 'sqlite' },
+  );
+
+  assert.deepEqual(queryBuilder.whereCalls[0], {
+    condition: "CAST(strftime('%Y', entity.createdAt) AS INTEGER) = :createdAt_year",
+    parameters: { createdAt_year: 2024 },
+  });
+  assert.deepEqual(queryBuilder.whereCalls[1], {
+    condition: "strftime('%Y-%m', entity.createdAt) = :createdAt_month",
+    parameters: { createdAt_month: '2024-05' },
+  });
+  assert.deepEqual(queryBuilder.whereCalls[2], {
+    condition: "CAST(strftime('%d', entity.createdAt) AS INTEGER) = :createdAt_day",
+    parameters: { createdAt_day: 15 },
+  });
+});
+
+test('typeorm adapter fails fast for unsupported dialect operators', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  assert.throws(
+    () =>
+      adapter.convert(
+        {
+          conditions: [{ field: 'tags', operator: 'any', value: ['new'] }],
+        },
+        { queryBuilder, dialect: 'mysql' },
+      ),
+    /not supported by TypeORM adapter for SQL dialect "mysql"/,
+  );
+
+  assert.throws(
+    () =>
+      adapter.convert(
+        {
+          conditions: [{ field: 'pattern', operator: 'regex', value: '^A' }],
+        },
+        { queryBuilder, dialect: 'sqlite' },
+      ),
+    /not supported by TypeORM adapter for SQL dialect "sqlite"/,
+  );
+});

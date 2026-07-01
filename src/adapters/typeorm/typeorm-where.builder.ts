@@ -1,13 +1,19 @@
 import { NormalizedCondition } from '../../core';
 import {
+  assertSqlOperatorSupport,
+  SqlDialect,
+} from '../sql-dialects';
+import {
   TypeOrmClauseBuilderDependencies,
   TypeOrmOperatorHandler,
   TypeOrmWhereClause,
 } from './typeorm.types';
 
 export function createTypeOrmOperatorHandlers(
-  _dependencies: TypeOrmClauseBuilderDependencies,
+  dependencies: TypeOrmClauseBuilderDependencies,
 ): Record<NormalizedCondition['operator'], TypeOrmOperatorHandler> {
+  const dialect = dependencies.dialect;
+
   return {
     eq: (field, value, parameterName) =>
       withParameter(`${field} = :${parameterName}`, parameterName, value),
@@ -26,7 +32,7 @@ export function createTypeOrmOperatorHandlers(
     like: (field, value, parameterName) =>
       withParameter(`${field} LIKE :${parameterName}`, parameterName, value),
     iLike: (field, value, parameterName) =>
-      withParameter(`${field} ILIKE :${parameterName}`, parameterName, value),
+      buildCaseInsensitiveLikeClause(field, value, parameterName, dialect),
     notLike: (field, value, parameterName) =>
       withParameter(`${field} NOT LIKE :${parameterName}`, parameterName, value),
     contains: (field, value, parameterName) =>
@@ -36,28 +42,28 @@ export function createTypeOrmOperatorHandlers(
     endsWith: (field, value, parameterName) =>
       withParameter(`${field} LIKE :${parameterName}`, parameterName, `%${String(value)}`),
     regex: (field, value, parameterName) =>
-      withParameter(`${field} ~ :${parameterName}`, parameterName, value),
+      buildRegexClause(field, value, parameterName, dialect),
     in: (field, value, parameterName) =>
       buildArrayMembershipClause(`${field} IN (:...${parameterName})`, value, parameterName),
     notIn: (field, value, parameterName) =>
       buildArrayMembershipClause(`${field} NOT IN (:...${parameterName})`, value, parameterName),
     any: (field, value, parameterName) =>
-      withParameter(`${field} && :${parameterName}`, parameterName, value),
+      buildArrayOverlapClause(field, value, parameterName, dialect),
     all: (field, value, parameterName) =>
-      withParameter(`${field} @> :${parameterName}`, parameterName, value),
+      buildArrayContainsClause(field, value, parameterName, dialect),
     size: (field, value, parameterName) =>
-      withParameter(`cardinality(${field}) = :${parameterName}`, parameterName, value),
+      buildArraySizeClause(field, value, parameterName, dialect),
     isNull: (field, value) => ({ condition: `${field} ${value ? 'IS NULL' : 'IS NOT NULL'}` }),
     isNotNull: (field, value) => ({ condition: `${field} ${value ? 'IS NOT NULL' : 'IS NULL'}` }),
     exists: (field, value) => ({ condition: `${field} ${value ? 'IS NOT NULL' : 'IS NULL'}` }),
     notExists: (field, value) => ({ condition: `${field} ${value ? 'IS NULL' : 'IS NOT NULL'}` }),
     date: (field, value, parameterName) => buildDateClause(field, value, parameterName),
     year: (field, value, parameterName) =>
-      withParameter(`EXTRACT(YEAR FROM ${field}) = :${parameterName}`, parameterName, value),
+      buildDatePartClause('year', field, value, parameterName, dialect),
     month: (field, value, parameterName) =>
-      withParameter(`TO_CHAR(${field}, 'YYYY-MM') = :${parameterName}`, parameterName, value),
+      buildDatePartClause('month', field, value, parameterName, dialect),
     day: (field, value, parameterName) =>
-      withParameter(`EXTRACT(DAY FROM ${field}) = :${parameterName}`, parameterName, value),
+      buildDatePartClause('day', field, value, parameterName, dialect),
     elemMatch: () => {
       throw new Error('Operator "elemMatch" is not supported in TypeORM adapter');
     },
@@ -145,4 +151,146 @@ function withParameter(
       [parameterName]: value,
     },
   };
+}
+
+function buildCaseInsensitiveLikeClause(
+  field: string,
+  value: unknown,
+  parameterName: string,
+  dialect: SqlDialect,
+): TypeOrmWhereClause {
+  if (dialect === 'postgres') {
+    return withParameter(`${field} ILIKE :${parameterName}`, parameterName, value);
+  }
+
+  return withParameter(
+    `LOWER(${field}) LIKE LOWER(:${parameterName})`,
+    parameterName,
+    value,
+  );
+}
+
+function buildRegexClause(
+  field: string,
+  value: unknown,
+  parameterName: string,
+  dialect: SqlDialect,
+): TypeOrmWhereClause {
+  assertSqlOperatorSupport(dialect, 'regex', 'TypeORM adapter');
+
+  if (dialect === 'postgres') {
+    return withParameter(`${field} ~ :${parameterName}`, parameterName, value);
+  }
+
+  return withParameter(`${field} REGEXP :${parameterName}`, parameterName, value);
+}
+
+function buildArrayOverlapClause(
+  field: string,
+  value: unknown,
+  parameterName: string,
+  dialect: SqlDialect,
+): TypeOrmWhereClause {
+  assertSqlOperatorSupport(dialect, 'any', 'TypeORM adapter');
+  return withParameter(`${field} && :${parameterName}`, parameterName, value);
+}
+
+function buildArrayContainsClause(
+  field: string,
+  value: unknown,
+  parameterName: string,
+  dialect: SqlDialect,
+): TypeOrmWhereClause {
+  assertSqlOperatorSupport(dialect, 'all', 'TypeORM adapter');
+  return withParameter(`${field} @> :${parameterName}`, parameterName, value);
+}
+
+function buildArraySizeClause(
+  field: string,
+  value: unknown,
+  parameterName: string,
+  dialect: SqlDialect,
+): TypeOrmWhereClause {
+  assertSqlOperatorSupport(dialect, 'size', 'TypeORM adapter');
+  return withParameter(`cardinality(${field}) = :${parameterName}`, parameterName, value);
+}
+
+function buildDatePartClause(
+  part: 'year' | 'month' | 'day',
+  field: string,
+  value: unknown,
+  parameterName: string,
+  dialect: SqlDialect,
+): TypeOrmWhereClause {
+  switch (dialect) {
+    case 'postgres':
+      return buildPostgresDatePartClause(part, field, value, parameterName);
+    case 'mysql':
+      return buildMysqlDatePartClause(part, field, value, parameterName);
+    case 'sqlite':
+      return buildSqliteDatePartClause(part, field, value, parameterName);
+    default:
+      return assertNeverDialect(dialect);
+  }
+}
+
+function buildPostgresDatePartClause(
+  part: 'year' | 'month' | 'day',
+  field: string,
+  value: unknown,
+  parameterName: string,
+): TypeOrmWhereClause {
+  if (part === 'month') {
+    return withParameter(`TO_CHAR(${field}, 'YYYY-MM') = :${parameterName}`, parameterName, value);
+  }
+
+  return withParameter(
+    `EXTRACT(${part.toUpperCase()} FROM ${field}) = :${parameterName}`,
+    parameterName,
+    value,
+  );
+}
+
+function buildMysqlDatePartClause(
+  part: 'year' | 'month' | 'day',
+  field: string,
+  value: unknown,
+  parameterName: string,
+): TypeOrmWhereClause {
+  if (part === 'month') {
+    return withParameter(
+      `DATE_FORMAT(${field}, '%Y-%m') = :${parameterName}`,
+      parameterName,
+      value,
+    );
+  }
+
+  const fn = part === 'year' ? 'YEAR' : 'DAY';
+  return withParameter(`${fn}(${field}) = :${parameterName}`, parameterName, value);
+}
+
+function buildSqliteDatePartClause(
+  part: 'year' | 'month' | 'day',
+  field: string,
+  value: unknown,
+  parameterName: string,
+): TypeOrmWhereClause {
+  if (part === 'month') {
+    return withParameter(
+      `strftime('%Y-%m', ${field}) = :${parameterName}`,
+      parameterName,
+      value,
+    );
+  }
+
+  const token = part === 'year' ? '%Y' : '%d';
+  return withParameter(
+    `CAST(strftime('${token}', ${field}) AS INTEGER) = :${parameterName}`,
+    parameterName,
+    value,
+  );
+}
+
+function assertNeverDialect(dialect: never): never {
+  throw new Error(`Unhandled SQL dialect "${dialect}"`);
 }

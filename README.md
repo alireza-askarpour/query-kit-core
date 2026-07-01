@@ -49,6 +49,7 @@ docs/
 More detailed documentation:
 
 - [Architecture](docs/README.md)
+- [SQL Dialect Support](docs/sql-dialect-support.md)
 - [Core](src/core/README.md)
 - [Formats](src/formats/README.md)
 - [SC Format](src/formats/sc/README.md)

@@ -21,6 +21,7 @@ Unlike the earlier monolithic implementation, the adapter is now split into focu
 - convert include paths into joins
 - convert pagination into `take(...)` and `skip(...)`
 - convert case expressions into `addSelect(...)`
+- enforce dialect-aware operator support for `postgres`, `mysql`, and `sqlite`
 
 ## Extension notes
 

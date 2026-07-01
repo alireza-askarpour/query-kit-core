@@ -49,6 +49,7 @@ registry.registerAdapterRegistration({
 ## Recommended adapter concerns
 
 - clause building
+- dialect-aware operator support
 - field resolution
 - include/join resolution
 - sorting

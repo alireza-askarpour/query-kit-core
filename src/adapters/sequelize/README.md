@@ -20,6 +20,7 @@ The adapter returns a plain object describing:
 - support `CASE` expressions
 - support includes
 - support sorting and pagination
+- enforce dialect-aware operator support for `postgres`, `mysql`, and `sqlite`
 
 ## Current design note
 

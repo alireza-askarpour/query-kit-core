@@ -5,6 +5,7 @@ import {
   NormalizedFilter,
   QueryAdapter,
 } from '../../core';
+import { assertSqlOperatorSupport } from '../sql-dialects';
 import {
   applyCaseExpressions,
   applyFieldSelection,
@@ -40,6 +41,7 @@ export class TypeOrmAdapter
   constructor() {
     this.operatorHandlers = createTypeOrmOperatorHandlers({
       escapeLiteral,
+      dialect: 'postgres',
     });
   }
 
@@ -48,13 +50,18 @@ export class TypeOrmAdapter
     options: TypeOrmAdapterOptions<TQueryBuilder>,
   ): TQueryBuilder {
     const queryBuilder = options.queryBuilder;
+    const dialect = options.dialect ?? 'postgres';
+    const operatorHandlers = createTypeOrmOperatorHandlers({
+      escapeLiteral,
+      dialect,
+    });
 
     normalized.conditions.forEach((condition) => {
-      this.applyCondition(queryBuilder, condition, options);
+      this.applyCondition(queryBuilder, condition, options, operatorHandlers);
     });
 
     applyCaseExpressions(queryBuilder, normalized.caseExpressions, (expression, index) =>
-      this.buildCaseExpression(expression, index, options),
+      this.buildCaseExpression(expression, index, options, operatorHandlers),
     );
     applyFieldSelection(queryBuilder, normalized.fields, options);
     applyIncludes(
@@ -72,11 +79,17 @@ export class TypeOrmAdapter
     queryBuilder: TQueryBuilder,
     condition: NormalizedCondition,
     options: TypeOrmAdapterOptions<TQueryBuilder>,
+    operatorHandlers: typeof this.operatorHandlers,
   ): void {
+    assertSqlOperatorSupport(
+      options.dialect ?? 'postgres',
+      condition.operator,
+      'TypeORM adapter',
+    );
     const field = resolveField(condition.field, options);
     const parameterName = createParameterName(condition.field, condition.operator);
     const whereClause = buildWhereClause(
-      this.operatorHandlers,
+      operatorHandlers,
       field,
       condition.operator,
       condition.value,
@@ -90,9 +103,15 @@ export class TypeOrmAdapter
     expression: NormalizedCaseExpression,
     expressionIndex: number,
     options: TypeOrmAdapterOptions<TQueryBuilder>,
+    operatorHandlers: typeof this.operatorHandlers,
   ): string {
     const clauses = expression.cases
       .map((entry, caseIndex) => {
+        assertSqlOperatorSupport(
+          options.dialect ?? 'postgres',
+          entry.when.operator,
+          'TypeORM adapter CASE expression',
+        );
         const field = resolveField(entry.when.field, options);
         const parameterName = createCaseParameterName(
           expression.outputField,
@@ -100,7 +119,7 @@ export class TypeOrmAdapter
           caseIndex,
         );
         const predicate = buildWhereClause(
-          this.operatorHandlers,
+          operatorHandlers,
           field,
           entry.when.operator,
           entry.when.value,

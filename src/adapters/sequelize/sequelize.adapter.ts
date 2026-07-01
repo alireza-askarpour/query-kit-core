@@ -21,9 +21,15 @@ import {
   NormalizedSort,
   QueryAdapter,
 } from '../../core';
+import {
+  assertSqlOperatorSupport,
+  normalizeSequelizeDialect,
+  SqlDialect,
+} from '../sql-dialects';
 
 export interface SequelizeAdapterOptions {
   model: ModelStatic<Model>;
+  dialect?: SqlDialect;
   fieldMap?: Record<string, string>;
   includeMap?: Record<string, Includeable>;
   defaultLimit?: number;
@@ -55,8 +61,66 @@ export class SequelizeAdapter
 {
   ormName = 'sequelize';
 
-  private readonly operatorHandlers: Record<string, SequelizeOperatorHandler> =
-    {
+  convert(
+    normalized: NormalizedFilter,
+    options: SequelizeAdapterOptions,
+  ): SequelizeQueryResult {
+    const dialect = this.resolveDialect(options);
+    const where: MutableWhere = {};
+    const order: OrderItem[] = [];
+    const operatorHandlers = this.createOperatorHandlers(dialect);
+
+    for (const condition of normalized.conditions) {
+      this.applyCondition(condition, where, options, operatorHandlers, dialect);
+    }
+
+    this.applySorting(normalized.sort ?? [], order, options);
+
+    const include = this.normalizeIncludes(
+      normalized.relationLoad ?? normalized.customInclude,
+      options.includeMap,
+    );
+    const attributes = this.buildAttributes(normalized, options, dialect);
+    const limit = this.getLimit(normalized.limit, options);
+
+    return {
+      where,
+      order,
+      limit,
+      offset: this.getOffset(normalized.page, normalized.offset, limit),
+      attributes,
+      include: include.length ? include : undefined,
+    };
+  }
+
+  private applyCondition(
+    condition: NormalizedCondition,
+    where: MutableWhere,
+    options: SequelizeAdapterOptions,
+    operatorHandlers: Record<string, SequelizeOperatorHandler>,
+    dialect: SqlDialect,
+  ): void {
+    assertSqlOperatorSupport(
+      dialect,
+      condition.operator,
+      'Sequelize adapter',
+    );
+
+    const field = options.fieldMap?.[condition.field] ?? condition.field;
+    const resolvedField = condition.field.includes('.') ? `$${field}$` : field;
+    const handler = operatorHandlers[condition.operator];
+
+    if (!handler) {
+      throw new Error(`Unsupported operator "${condition.operator}"`);
+    }
+
+    handler(resolvedField, condition.value, where);
+  }
+
+  private createOperatorHandlers(
+    dialect: SqlDialect,
+  ): Record<string, SequelizeOperatorHandler> {
+    return {
       eq: (field, value, where) => {
         where[field] = value;
       },
@@ -84,7 +148,16 @@ export class SequelizeAdapter
         where[field] = { [Op.like]: value };
       },
       iLike: (field, value, where) => {
-        where[field] = { [Op.iLike]: value };
+        if (dialect === 'postgres') {
+          where[field] = { [Op.iLike]: value };
+          return;
+        }
+
+        this.appendFunctionPatternComparison(
+          where,
+          field,
+          String(value).toLowerCase(),
+        );
       },
       notLike: (field, value, where) => {
         where[field] = { [Op.notLike]: value };
@@ -99,6 +172,7 @@ export class SequelizeAdapter
         where[field] = { [Op.like]: `%${value}` };
       },
       regex: (field, value, where) => {
+        assertSqlOperatorSupport(dialect, 'regex', 'Sequelize adapter');
         where[field] = { [Op.regexp]: value };
       },
       in: (field, value, where) => {
@@ -112,16 +186,19 @@ export class SequelizeAdapter
         }
       },
       any: (field, value, where) => {
+        assertSqlOperatorSupport(dialect, 'any', 'Sequelize adapter');
         if (Array.isArray(value)) {
           where[field] = { [Op.overlap]: value };
         }
       },
       all: (field, value, where) => {
+        assertSqlOperatorSupport(dialect, 'all', 'Sequelize adapter');
         if (Array.isArray(value)) {
           where[field] = { [Op.contains]: value };
         }
       },
       size: (field, value, where) => {
+        assertSqlOperatorSupport(dialect, 'size', 'Sequelize adapter');
         this.appendLiteralComparison(
           where,
           `cardinality(${this.quoteIdentifier(field)})`,
@@ -147,64 +224,15 @@ export class SequelizeAdapter
         where[field] = { [Op.between]: [date, nextDay] };
       },
       year: (field, value, where) => {
-        this.appendDateFunction(where, 'YEAR', field, value);
+        this.appendYearComparison(where, field, value, dialect);
       },
       month: (field, value, where) => {
-        this.appendLiteralComparison(
-          where,
-          `to_char(${this.quoteIdentifier(field)}, 'YYYY-MM')`,
-          String(value),
-        );
+        this.appendMonthComparison(where, field, value, dialect);
       },
       day: (field, value, where) => {
-        this.appendDateFunction(where, 'DAY', field, value);
+        this.appendDayComparison(where, field, value, dialect);
       },
     };
-
-  convert(
-    normalized: NormalizedFilter,
-    options: SequelizeAdapterOptions,
-  ): SequelizeQueryResult {
-    const where: MutableWhere = {};
-    const order: OrderItem[] = [];
-
-    for (const condition of normalized.conditions) {
-      this.applyCondition(condition, where, options);
-    }
-
-    this.applySorting(normalized.sort ?? [], order, options);
-
-    const include = this.normalizeIncludes(
-      normalized.relationLoad ?? normalized.customInclude,
-      options.includeMap,
-    );
-    const attributes = this.buildAttributes(normalized, options);
-    const limit = this.getLimit(normalized.limit, options);
-
-    return {
-      where,
-      order,
-      limit,
-      offset: this.getOffset(normalized.page, normalized.offset, limit),
-      attributes,
-      include: include.length ? include : undefined,
-    };
-  }
-
-  private applyCondition(
-    condition: NormalizedCondition,
-    where: MutableWhere,
-    options: SequelizeAdapterOptions,
-  ): void {
-    const field = options.fieldMap?.[condition.field] ?? condition.field;
-    const resolvedField = condition.field.includes('.') ? `$${field}$` : field;
-    const handler = this.operatorHandlers[condition.operator];
-
-    if (!handler) {
-      throw new Error(`Unsupported operator "${condition.operator}"`);
-    }
-
-    handler(resolvedField, condition.value, where);
   }
 
   private applySorting(
@@ -239,17 +267,18 @@ export class SequelizeAdapter
         return includeMap?.[item] ?? item;
       }
 
-      return item as Includeable;
+      return item as unknown as Includeable;
     });
   }
 
   private buildAttributes(
     normalized: NormalizedFilter,
     options: SequelizeAdapterOptions,
+    dialect: SqlDialect,
   ): FindAttributeOptions | undefined {
     const baseFields = normalized.fields?.length ? [...normalized.fields] : [];
     const caseAttributes = (normalized.caseExpressions ?? []).map((expression) =>
-      this.buildCaseAttribute(expression, options),
+      this.buildCaseAttribute(expression, options, dialect),
     );
 
     if (baseFields.length === 0 && caseAttributes.length === 0) {
@@ -266,11 +295,12 @@ export class SequelizeAdapter
   private buildCaseAttribute(
     expression: NormalizedCaseExpression,
     options: SequelizeAdapterOptions,
+    dialect: SqlDialect,
   ): [ReturnType<typeof literal>, string] {
     const sql = expression.cases
       .map(({ when, then }) => {
         const field = options.fieldMap?.[when.field] ?? when.field;
-        return `WHEN ${this.buildPredicate(field, when.operator, when.value, options)} THEN ${this.escapeValue(then, options)}`;
+        return `WHEN ${this.buildPredicate(field, when.operator, when.value, options, dialect)} THEN ${this.escapeValue(then, options)}`;
       })
       .join(' ');
 
@@ -287,7 +317,14 @@ export class SequelizeAdapter
     operator: NormalizedCondition['operator'],
     value: unknown,
     options: SequelizeAdapterOptions,
+    dialect: SqlDialect,
   ): string {
+    assertSqlOperatorSupport(
+      dialect,
+      operator,
+      'Sequelize adapter CASE expression',
+    );
+
     const column = this.quoteIdentifier(field);
 
     switch (operator) {
@@ -309,15 +346,27 @@ export class SequelizeAdapter
         }
         break;
       case 'like':
-      case 'iLike':
       case 'notLike':
         return `${column} ${operator === 'notLike' ? 'NOT LIKE' : 'LIKE'} ${this.escapeValue(value, options)}`;
+      case 'iLike':
+        if (dialect === 'postgres') {
+          return `${column} ILIKE ${this.escapeValue(value, options)}`;
+        }
+        return `LOWER(${column}) LIKE LOWER(${this.escapeValue(value, options)})`;
       case 'contains':
         return `${column} LIKE ${this.escapeValue(`%${String(value)}%`, options)}`;
       case 'startsWith':
         return `${column} LIKE ${this.escapeValue(`${String(value)}%`, options)}`;
       case 'endsWith':
         return `${column} LIKE ${this.escapeValue(`%${String(value)}`, options)}`;
+      case 'regex':
+        if (dialect === 'postgres') {
+          return `${column} ~ ${this.escapeValue(value, options)}`;
+        }
+        if (dialect === 'mysql') {
+          return `${column} REGEXP ${this.escapeValue(value, options)}`;
+        }
+        break;
       case 'in':
       case 'notIn':
         if (Array.isArray(value) && value.length > 0) {
@@ -374,8 +423,116 @@ export class SequelizeAdapter
   ): void {
     const andConditions = this.ensureAndConditions(where);
     andConditions.push(
-      Sequelize.where(Sequelize.fn(fn, Sequelize.col(field)), value),
+      Sequelize.where(
+        Sequelize.fn(fn, Sequelize.col(this.normalizeColumnReference(field))),
+        value,
+      ),
     );
+  }
+
+  private appendFunctionPatternComparison(
+    where: MutableWhere,
+    field: string,
+    value: unknown,
+  ): void {
+    const andConditions = this.ensureAndConditions(where);
+    andConditions.push(
+      Sequelize.where(
+        Sequelize.fn('LOWER', Sequelize.col(this.normalizeColumnReference(field))),
+        { [Op.like]: value },
+      ),
+    );
+  }
+
+  private appendYearComparison(
+    where: MutableWhere,
+    field: string,
+    value: unknown,
+    dialect: SqlDialect,
+  ): void {
+    switch (dialect) {
+      case 'postgres':
+        this.appendLiteralComparison(
+          where,
+          `EXTRACT(YEAR FROM ${this.quoteIdentifier(field)})`,
+          value,
+        );
+        return;
+      case 'mysql':
+        this.appendDateFunction(where, 'YEAR', field, value);
+        return;
+      case 'sqlite':
+        this.appendLiteralComparison(
+          where,
+          `CAST(strftime('%Y', ${this.quoteIdentifier(field)}) AS INTEGER)`,
+          value,
+        );
+        return;
+      default:
+        return this.assertNeverDialect(dialect);
+    }
+  }
+
+  private appendMonthComparison(
+    where: MutableWhere,
+    field: string,
+    value: unknown,
+    dialect: SqlDialect,
+  ): void {
+    switch (dialect) {
+      case 'postgres':
+        this.appendLiteralComparison(
+          where,
+          `TO_CHAR(${this.quoteIdentifier(field)}, 'YYYY-MM')`,
+          String(value),
+        );
+        return;
+      case 'mysql':
+        this.appendLiteralComparison(
+          where,
+          `DATE_FORMAT(${this.quoteIdentifier(field)}, '%Y-%m')`,
+          String(value),
+        );
+        return;
+      case 'sqlite':
+        this.appendLiteralComparison(
+          where,
+          `strftime('%Y-%m', ${this.quoteIdentifier(field)})`,
+          String(value),
+        );
+        return;
+      default:
+        return this.assertNeverDialect(dialect);
+    }
+  }
+
+  private appendDayComparison(
+    where: MutableWhere,
+    field: string,
+    value: unknown,
+    dialect: SqlDialect,
+  ): void {
+    switch (dialect) {
+      case 'postgres':
+        this.appendLiteralComparison(
+          where,
+          `EXTRACT(DAY FROM ${this.quoteIdentifier(field)})`,
+          value,
+        );
+        return;
+      case 'mysql':
+        this.appendDateFunction(where, 'DAY', field, value);
+        return;
+      case 'sqlite':
+        this.appendLiteralComparison(
+          where,
+          `CAST(strftime('%d', ${this.quoteIdentifier(field)}) AS INTEGER)`,
+          value,
+        );
+        return;
+      default:
+        return this.assertNeverDialect(dialect);
+    }
   }
 
   private appendLiteralComparison(
@@ -396,6 +553,14 @@ export class SequelizeAdapter
       .split('.')
       .map((part) => `"${part.replace(/"/g, '""')}"`)
       .join('.');
+  }
+
+  private normalizeColumnReference(field: string): string {
+    if (field.startsWith('$') && field.endsWith('$')) {
+      return field.slice(1, -1);
+    }
+
+    return field;
   }
 
   private escapeValue(value: unknown, options: SequelizeAdapterOptions): string {
@@ -448,5 +613,24 @@ export class SequelizeAdapter
     }
 
     return String(value);
+  }
+
+  private resolveDialect(options: SequelizeAdapterOptions): SqlDialect {
+    if (options.dialect) {
+      return options.dialect;
+    }
+
+    const rawDialect = options.model?.sequelize?.getDialect?.();
+    if (!rawDialect) {
+      throw new Error(
+        'Sequelize adapter requires an explicit SQL dialect or a model with sequelize.getDialect()',
+      );
+    }
+
+    return normalizeSequelizeDialect(rawDialect);
+  }
+
+  private assertNeverDialect(dialect: never): never {
+    throw new Error(`Unhandled SQL dialect "${dialect}"`);
   }
 }

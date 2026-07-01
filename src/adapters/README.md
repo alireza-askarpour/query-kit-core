@@ -5,6 +5,7 @@ Adapters convert a `NormalizedFilter` into ORM-native output.
 ## Responsibilities
 
 - map normalized operators into ORM expressions
+- apply dialect-aware SQL operator support or fail fast
 - apply field selection
 - apply sorting
 - apply pagination
