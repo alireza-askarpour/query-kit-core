@@ -7,6 +7,12 @@ import {
   NormalizedSort,
   Query,
 } from '../../core';
+import {
+  buildAggregationDefinition,
+  parseAggregationDirective,
+  parseGroupByDirective,
+  parseHavingDirective,
+} from '../aggregation-directive.utils';
 
 @Injectable()
 export class MCFormat implements FilterFormat {
@@ -15,7 +21,7 @@ export class MCFormat implements FilterFormat {
     supportsRegex: true,
     supportsArrayOperators: true,
     supportsCaseExpressions: false,
-    supportsAggregations: false,
+    supportsAggregations: true,
     supportsFieldSelection: true,
     supportsIncludes: true,
     supportsPagination: true,
@@ -64,6 +70,7 @@ export class MCFormat implements FilterFormat {
 
     const segments = this.splitSegments(filterString);
     const conditions: NormalizedCondition[] = [];
+    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
     const directives = {
       sort: this.parseSortDirective(query.sortString),
       limit: query.size,
@@ -72,11 +79,13 @@ export class MCFormat implements FilterFormat {
       fields: query.fields ? [...query.fields] : undefined,
       relationLoad: query.relations ?? query.customInclude,
       customInclude: query.customInclude,
+      groupBy: undefined as string[] | undefined,
+      having: [] as import('../../core').FilterPredicate[],
     };
 
     segments.forEach((segment) => {
       if (segment.startsWith('@')) {
-        this.applyDirective(segment, directives);
+        this.applyDirective(segment, directives, aggregationMetrics);
         return;
       }
 
@@ -94,6 +103,11 @@ export class MCFormat implements FilterFormat {
       projection: directives.fields ? { fields: directives.fields } : undefined,
       relations: directives.relationLoad,
       customInclude: directives.customInclude,
+      aggregation: buildAggregationDefinition(
+        aggregationMetrics,
+        directives.groupBy,
+        directives.having,
+      ),
     });
   }
 
@@ -118,7 +132,10 @@ export class MCFormat implements FilterFormat {
       fields?: string[];
       relationLoad?: Query['relations'];
       customInclude?: Query['customInclude'];
+      groupBy?: string[];
+      having: import('../../core').FilterPredicate[];
     },
+    aggregationMetrics: import('../../core').AggregationExpression[],
   ): void {
     const [rawName, rawValue = ''] = this.splitByUnescapedColon(segment);
     const name = rawName.slice(1).trim().toLowerCase();
@@ -143,6 +160,32 @@ export class MCFormat implements FilterFormat {
       case 'populate':
       case 'include':
         directives.relationLoad = this.parseList(value, `@${name}`);
+        directives.customInclude = directives.relationLoad;
+        break;
+      case 'aggregate':
+        aggregationMetrics.push(
+          ...parseAggregationDirective(
+            value,
+            this.parseList.bind(this),
+            '@aggregate',
+          ),
+        );
+        break;
+      case 'groupby':
+        directives.groupBy = parseGroupByDirective(
+          value,
+          this.parseList.bind(this),
+          '@groupBy',
+        );
+        break;
+      case 'having':
+        directives.having.push(
+          parseHavingDirective(
+            value,
+            (predicateValue) => this.parseCondition(predicateValue),
+            '@having',
+          ),
+        );
         break;
       default:
         throw new BadRequestException(`Unsupported directive "${rawName}"`);

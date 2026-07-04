@@ -55,3 +55,17 @@ test('mc validator rejects unsupported operator for field type', () => {
   assert.equal(result.isValid, false);
   assert.equal(result.errors[0].code, 'OPERATOR_NOT_ALLOWED_FOR_FIELD');
 });
+
+test('mc validator validates aggregation directives and having aliases', () => {
+  const validator = new MCFormatValidator();
+
+  const result = validator.validate(
+    'status:$eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmount;@having:total:$gte:1',
+    {
+      status: { type: 'string' },
+      amount: { type: 'number' },
+    },
+  );
+
+  assert.equal(result.isValid, true);
+});

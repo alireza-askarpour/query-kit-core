@@ -11,7 +11,11 @@ import {
   FilterRuntimeOptions,
   Query,
 } from '../contracts';
-import { FilterIR, getCapabilityRequirements } from '../types';
+import {
+  FilterIR,
+  getCapabilityRequirements,
+  validateFilterIrSemantics,
+} from '../types';
 import { QueryAdapter } from '../contracts/query-adapter.interface';
 
 @Injectable()
@@ -65,6 +69,7 @@ export class FilterProcessor {
     const formatRegistration = this.registry.getFormatRegistration(formatName);
     const format = formatRegistration.format;
     const normalized = format.parse(normalizedQuery);
+    this.validateNormalizedQuery(normalized);
     this.validateCapabilities(
       'Format',
       format.name,
@@ -84,6 +89,20 @@ export class FilterProcessor {
     );
 
     return adapter.convert(normalized, request.adapterOptions);
+  }
+
+  private validateNormalizedQuery(normalized: FilterIR): void {
+    const issues = validateFilterIrSemantics(normalized);
+
+    if (issues.length === 0) {
+      return;
+    }
+
+    throw new BadRequestException({
+      message: 'Filter semantic validation failed',
+      errors: issues,
+      warnings: [],
+    });
   }
 
   private normalizeQuery(query: string | Query): Query {

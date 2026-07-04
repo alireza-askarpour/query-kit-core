@@ -8,6 +8,10 @@ export interface TypeOrmQueryBuilderLike {
   skip(offset: number): this;
   select(selection: string[]): this;
   addSelect(selection: string, aliasName?: string): this;
+  groupBy?(group: string): this;
+  addGroupBy?(group: string): this;
+  having?(condition: string, parameters?: Record<string, unknown>): this;
+  andHaving?(condition: string, parameters?: Record<string, unknown>): this;
   leftJoin(path: string, alias: string): this;
   leftJoinAndSelect(path: string, alias: string): this;
 }

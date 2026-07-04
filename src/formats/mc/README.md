@@ -27,11 +27,15 @@ meta:$elemMatch:{"published":true}
 - `@offset`
 - `@fields`
 - `@populate`
+- `@groupBy`
+- `@aggregate`
+- `@having`
 
 Example:
 
 ```text
 status:$eq:active;@sort:-createdAt;@populate:profile,orders.items
+status:$eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmount;@having:totalAmount:$gte:100
 ```
 
 ## Validation

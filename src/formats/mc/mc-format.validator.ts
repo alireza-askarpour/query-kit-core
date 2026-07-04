@@ -17,6 +17,10 @@ import {
 } from './mc-format-validation.schema';
 import { parseMongoValueByOperator } from './mc-format-validation.value';
 import { mongoSecurityCheck } from './mc-format-validation.security';
+import {
+  parseAggregationDirective,
+  parseGroupByDirective,
+} from '../aggregation-directive.utils';
 import type {
   MongoConditionValidationResult,
   MongoFieldSchema,
@@ -70,8 +74,17 @@ export class MCFormatValidator
       validateDateFormat: validateMongoDateFormat,
       parseObjectLiteral: this.parseObjectLiteral.bind(this),
     });
+    const aggregationValidation = this.validateAggregationDirectives(
+      queryString,
+      schema,
+    );
+    errors.push(...aggregationValidation.errors);
+    warnings.push(...aggregationValidation.warnings);
 
-    if (conditions.length > (this.options.maxConditions ?? 50)) {
+    if (
+      conditions.length + aggregationValidation.havingConditionCount >
+      (this.options.maxConditions ?? 50)
+    ) {
       errors.push({
         field: 'query',
         message: `Too many conditions. Maximum allowed: ${this.options.maxConditions}`,
@@ -229,6 +242,194 @@ export class MCFormatValidator
   private normalizeOperator(operator: string): string {
     const normalized = operator.replace(/^\$/, '').toLowerCase();
     return MC_OPERATOR_ALIASES[normalized] ?? operator;
+  }
+
+  private validateAggregationDirectives(
+    queryString: string,
+    schema?: Record<string, MongoFieldSchema>,
+  ): {
+    errors: MongoValidationError[];
+    warnings: MongoValidationError[];
+    havingConditionCount: number;
+  } {
+    const errors: MongoValidationError[] = [];
+    const warnings: MongoValidationError[] = [];
+    const metrics: Array<{ field?: string; operator: string; alias?: string }> = [];
+    const groupByFields: string[] = [];
+    const rawHavingConditions: string[] = [];
+
+    const parts = queryString
+      .split(/(?<!\\);/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    parts.forEach((part) => {
+      if (!part.startsWith('@')) {
+        return;
+      }
+
+      const [rawDirective, ...rawValueParts] = part.split(/(?<!\\):/);
+      const directive = rawDirective.slice(1).trim().toLowerCase();
+      const value = rawValueParts.join(':').trim();
+
+      try {
+        switch (directive) {
+          case 'aggregate':
+            metrics.push(
+              ...parseAggregationDirective(value, this.parseDirectiveList, '@aggregate'),
+            );
+            break;
+          case 'groupby':
+            groupByFields.push(
+              ...parseGroupByDirective(value, this.parseDirectiveList, '@groupBy'),
+            );
+            break;
+          case 'having':
+            rawHavingConditions.push(value);
+            break;
+          default:
+            break;
+        }
+      } catch (error) {
+        errors.push({
+          field: rawDirective,
+          message: error instanceof Error ? error.message : String(error),
+          code: 'AGGREGATION_DIRECTIVE_ERROR',
+        });
+      }
+    });
+
+    groupByFields.forEach((field) => {
+      this.validateAggregationFieldReference(field, schema, errors);
+    });
+
+    metrics.forEach((metric) => {
+      if (metric.field) {
+        this.validateAggregationFieldReference(metric.field, schema, errors);
+      }
+
+      const fieldSchema = metric.field ? schema?.[metric.field] : undefined;
+      if (
+        (metric.operator === 'sum' || metric.operator === 'avg') &&
+        fieldSchema &&
+        fieldSchema.type !== 'number'
+      ) {
+        errors.push({
+          field: metric.field ?? metric.alias ?? metric.operator,
+          operator: metric.operator,
+          message: `Aggregation operator '${metric.operator}' requires a numeric field`,
+          code: 'INVALID_AGGREGATION_FIELD_TYPE',
+        });
+      }
+    });
+
+    const havingSchema = this.createHavingSchema(schema, groupByFields, metrics);
+
+    rawHavingConditions.forEach((rawHaving, index) => {
+      const parsed = this.parseDirectiveCondition(rawHaving);
+      const result = this.validateCondition(parsed, havingSchema, index);
+      errors.push(...result.errors);
+      warnings.push(...result.warnings);
+    });
+
+    return {
+      errors,
+      warnings,
+      havingConditionCount: rawHavingConditions.length,
+    };
+  }
+
+  private validateAggregationFieldReference(
+    field: string,
+    schema: Record<string, MongoFieldSchema> | undefined,
+    errors: MongoValidationError[],
+  ): void {
+    if (schema && !schema[field] && this.options.strictMode) {
+      errors.push({
+        field,
+        message: `Field '${field}' is not allowed in schema`,
+        code: 'FIELD_NOT_ALLOWED',
+      });
+    }
+
+    if (!validateMongoFieldName(field)) {
+      errors.push({
+        field,
+        message:
+          `Invalid field name '${field}'. Only alphanumeric, dots, and underscores allowed`,
+        code: 'INVALID_FIELD_NAME',
+      });
+      return;
+    }
+
+    if (field.includes('.')) {
+      const nestedResult = validateMongoNestedField(field, this.options);
+      if (!nestedResult.isValid) {
+        errors.push(...nestedResult.errors);
+      }
+    }
+  }
+
+  private createHavingSchema(
+    schema: Record<string, MongoFieldSchema> | undefined,
+    groupByFields: string[],
+    metrics: Array<{ field?: string; operator: string; alias?: string }>,
+  ): Record<string, MongoFieldSchema> | undefined {
+    if (!schema && metrics.length === 0 && groupByFields.length === 0) {
+      return undefined;
+    }
+
+    const derivedSchema: Record<string, MongoFieldSchema> = { ...(schema ?? {}) };
+
+    groupByFields.forEach((field) => {
+      derivedSchema[field] = schema?.[field] ?? { type: 'string' };
+    });
+
+    metrics.forEach((metric) => {
+      const alias = metric.alias ?? `${metric.operator}_${metric.field ?? 'all'}`;
+      const sourceSchema = metric.field ? schema?.[metric.field] : undefined;
+      derivedSchema[alias] = {
+        type:
+          metric.operator === 'count' ||
+          metric.operator === 'sum' ||
+          metric.operator === 'avg'
+            ? 'number'
+            : sourceSchema?.type ?? 'string',
+      };
+    });
+
+    return derivedSchema;
+  }
+
+  private parseDirectiveCondition(rawValue: string): MongoParsedCondition {
+    const match = rawValue.match(/^([^:]+):([^:]+):(.*)$/);
+
+    if (!match) {
+      return {
+        raw: rawValue,
+        error: 'Invalid format',
+      };
+    }
+
+    return {
+      field: match[1].replace(/\\:/g, ':'),
+      operator: this.normalizeOperator(match[2]),
+      rawValue: match[3],
+      value: null,
+    };
+  }
+
+  private parseDirectiveList(value: string): string[] {
+    const items = value
+      .split(/(?<!\\),/)
+      .map((item) => item.replace(/\\,/g, ',').trim())
+      .filter(Boolean);
+
+    if (items.length === 0) {
+      throw new Error('Directive requires at least one value');
+    }
+
+    return items;
   }
 
   private parseObjectLiteral(rawValue: string): Record<string, unknown> {

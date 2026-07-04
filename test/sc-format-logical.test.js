@@ -49,3 +49,36 @@ test('sc format validator rejects unbalanced groups', () => {
   assert.equal(result.isValid, false);
   assert.equal(result.errors[0].code, 'PARSE_ERROR');
 });
+
+test('sc format parses aggregation and group by directives', () => {
+  const format = new SCFormat();
+
+  const result = format.parse({
+    filterString:
+      'status:eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmount,avg(score):avgScore;@having:total:gt:1',
+  });
+
+  assert.deepEqual(result.aggregation, {
+    groupBy: ['status'],
+    metrics: [
+      { operator: 'count', alias: 'total' },
+      { operator: 'sum', field: 'amount', alias: 'totalAmount' },
+      { operator: 'avg', field: 'score', alias: 'avgScore' },
+    ],
+    having: [{ field: 'total', operator: 'gt', value: 1 }],
+  });
+});
+
+test('sc format validator validates aggregation directives and having aliases', () => {
+  const validator = new SCFormatValidator();
+
+  const result = validator.validate(
+    'status:eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmount;@having:totalAmount:gte:100',
+    {
+      status: { type: 'string' },
+      amount: { type: 'number' },
+    },
+  );
+
+  assert.equal(result.isValid, true);
+});

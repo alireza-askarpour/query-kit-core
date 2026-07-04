@@ -10,6 +10,7 @@ Adapters convert a `FilterIR` into ORM-native output.
 - apply sorting
 - apply pagination
 - apply includes or joins
+- map neutral aggregations into SQL `GROUP BY` / aggregate functions or Mongo pipelines
 - optionally render `CASE` expressions
 
 ## Current adapters

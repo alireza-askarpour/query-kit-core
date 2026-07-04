@@ -156,3 +156,50 @@ test('sequelize adapter builds nested logical where clauses', () => {
     deletedAt: { [Op.not]: null },
   });
 });
+
+test('sequelize adapter builds aggregation result metadata', () => {
+  const adapter = new SequelizeAdapter();
+  const result = adapter.convert(
+    {
+      conditions: [{ field: 'status', operator: 'eq', value: 'active' }],
+      aggregation: {
+        groupBy: ['status'],
+        metrics: [
+          { operator: 'count', alias: 'total' },
+          { operator: 'sum', field: 'amount', alias: 'totalAmount' },
+          { operator: 'avg', field: 'score', alias: 'avgScore' },
+        ],
+      },
+    },
+    {
+      model: new MockModel('postgres'),
+      dialect: 'postgres',
+    },
+  );
+
+  assert.deepEqual(result.group, ['status']);
+  assert.equal(result.attributes[0], 'status');
+  assert.equal(result.attributes.length, 4);
+});
+
+test('sequelize adapter supports group by without metrics and renders having', () => {
+  const adapter = new SequelizeAdapter();
+  const result = adapter.convert(
+    {
+      aggregation: {
+        groupBy: ['status'],
+        metrics: [{ operator: 'sum', field: 'amount', alias: 'totalAmount' }],
+        having: [{ field: 'totalAmount', operator: 'gt', value: 100 }],
+      },
+    },
+    {
+      model: new MockModel('postgres'),
+      dialect: 'postgres',
+    },
+  );
+
+  assert.deepEqual(result.group, ['status']);
+  assert.equal(result.attributes[0], 'status');
+  assert.equal(typeof result.having.val, 'string');
+  assert.match(result.having.val, /SUM\("amount"\) > 100/);
+});

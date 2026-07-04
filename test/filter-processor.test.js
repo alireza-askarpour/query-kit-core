@@ -385,3 +385,69 @@ test('processWith fails fast when format capabilities reject aggregations', () =
     /Format "capability" does not support: aggregations/,
   );
 });
+
+test('processWith fails fast on invalid aggregation having field', () => {
+  const registry = new FilterRegistry();
+  registry.registerFormatRegistration({
+    format: new CapabilityFormat({
+      capabilities: {
+        supportsAggregations: true,
+      },
+      parsed: createFilterIR({
+        predicates: [],
+        aggregation: {
+          groupBy: ['status'],
+          metrics: [{ operator: 'count', alias: 'total' }],
+          having: [{ field: 'amount', operator: 'gt', value: 10 }],
+        },
+      }),
+    }),
+  });
+  registry.registerAdapter(new MockAdapter({ supportsAggregations: true }));
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'capability',
+    defaultOrm: 'mock',
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'ignored',
+      }),
+    /Filter semantic validation failed/,
+  );
+});
+
+test('processWith fails fast on invalid aggregation sort field', () => {
+  const registry = new FilterRegistry();
+  registry.registerFormatRegistration({
+    format: new CapabilityFormat({
+      capabilities: {
+        supportsAggregations: true,
+      },
+      parsed: createFilterIR({
+        predicates: [],
+        aggregation: {
+          groupBy: ['status'],
+          metrics: [{ operator: 'count', alias: 'total' }],
+        },
+        sorting: [{ field: 'createdAt', direction: 'desc' }],
+      }),
+    }),
+  });
+  registry.registerAdapter(new MockAdapter({ supportsAggregations: true }));
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'capability',
+    defaultOrm: 'mock',
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'ignored',
+      }),
+    /Filter semantic validation failed/,
+  );
+});

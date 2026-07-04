@@ -18,6 +18,12 @@ import {
   RawExpressionNode,
   splitTopLevelSegments,
 } from './sc-logical-expression.parser';
+import {
+  buildAggregationDefinition,
+  parseAggregationDirective,
+  parseGroupByDirective,
+  parseHavingDirective,
+} from '../aggregation-directive.utils';
 
 @Injectable()
 export class SCFormat implements FilterFormat {
@@ -26,7 +32,7 @@ export class SCFormat implements FilterFormat {
     supportsRegex: true,
     supportsArrayOperators: true,
     supportsCaseExpressions: true,
-    supportsAggregations: false,
+    supportsAggregations: true,
     supportsFieldSelection: true,
     supportsIncludes: true,
     supportsPagination: true,
@@ -152,6 +158,7 @@ export class SCFormat implements FilterFormat {
     const segments = this.splitSegments(filterString);
     const conditions: NormalizedCondition[] = [];
     const caseExpressions: NormalizedCaseExpression[] = [];
+    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
     const expressionSegments: string[] = [];
     const directives = {
       sort: [] as NormalizedSort[],
@@ -161,13 +168,15 @@ export class SCFormat implements FilterFormat {
       fields: query.fields ? [...query.fields] : undefined,
       relationLoad: query.relations ?? query.customInclude,
       include: query.customInclude,
+      groupBy: undefined as string[] | undefined,
+      having: [] as import('../../core').FilterPredicate[],
     };
 
     for (let index = 0; index < segments.length; index += 1) {
       const segment = segments[index];
 
       if (this.isDirective(segment)) {
-        this.applyDirective(segment, directives);
+        this.applyDirective(segment, directives, aggregationMetrics);
         continue;
       }
 
@@ -209,6 +218,11 @@ export class SCFormat implements FilterFormat {
             caseExpressions,
           },
         },
+        aggregation: buildAggregationDefinition(
+          aggregationMetrics,
+          directives.groupBy,
+          directives.having,
+        ),
       });
     }
 
@@ -236,6 +250,11 @@ export class SCFormat implements FilterFormat {
           caseExpressions,
         },
       },
+      aggregation: buildAggregationDefinition(
+        aggregationMetrics,
+        directives.groupBy,
+        directives.having,
+      ),
     });
   }
 
@@ -320,7 +339,10 @@ export class SCFormat implements FilterFormat {
       fields?: string[];
       relationLoad?: Query['relations'];
       include?: Query['customInclude'];
+      groupBy?: string[];
+      having: import('../../core').FilterPredicate[];
     },
+    aggregationMetrics: import('../../core').AggregationExpression[],
   ): void {
     const [directiveName, rawValue = ''] = this.splitByUnescapedColon(segment);
     const name = directiveName.slice(1).trim().toLowerCase();
@@ -345,6 +367,35 @@ export class SCFormat implements FilterFormat {
       case 'include':
         directives.relationLoad = this.parseCommaSeparatedList(value, '@include');
         directives.include = this.parseCommaSeparatedList(value, '@include');
+        break;
+      case 'aggregate':
+        aggregationMetrics.push(
+          ...parseAggregationDirective(
+            value,
+            this.parseCommaSeparatedList.bind(this),
+            '@aggregate',
+          ),
+        );
+        break;
+      case 'groupby':
+        directives.groupBy = parseGroupByDirective(
+          value,
+          this.parseCommaSeparatedList.bind(this),
+          '@groupBy',
+        );
+        break;
+      case 'having':
+        directives.having.push(
+          parseHavingDirective(
+            value,
+            (predicateValue) => {
+              const condition = this.parseCondition(predicateValue);
+              this.validateCondition(condition);
+              return condition;
+            },
+            '@having',
+          ),
+        );
         break;
       default:
         throw new BadRequestException(`Unsupported directive "${directiveName}"`);

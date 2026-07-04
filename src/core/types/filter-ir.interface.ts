@@ -88,21 +88,27 @@ export interface FilterCaseExpression {
 
 export type AggregationOperator = 'count' | 'sum' | 'avg' | 'min' | 'max';
 
-export interface HavingCondition {
-  operator: FilterOperator;
-  value: unknown;
-}
-
 export interface AggregationExpression {
-  field: string;
+  field?: string;
   operator: AggregationOperator;
   alias?: string;
-  having?: HavingCondition;
+  distinct?: boolean;
 }
 
 export interface GroupByExpression {
   fields: string[];
-  having?: HavingCondition;
+}
+
+export interface AggregateDefinition {
+  metrics: AggregationExpression[];
+  groupBy?: string[];
+  having?: FilterPredicate[];
+}
+
+export interface HavingCondition {
+  field?: string;
+  operator: FilterOperator;
+  value: unknown;
 }
 
 export interface SqlFilterFeatures {
@@ -125,6 +131,7 @@ export interface FilterIrExtensions {
 export interface FilterIR {
   predicates: FilterPredicate[];
   expression?: FilterExpressionNode;
+  aggregation?: AggregateDefinition;
   sorting?: SortInstruction[];
   pagination?: PaginationInstruction;
   projection?: ProjectionInstruction;
@@ -135,6 +142,7 @@ export interface FilterIR {
 export interface NormalizedFilter extends FilterIR {
   conditions: FilterPredicate[];
   logicalExpression?: FilterExpressionNode;
+  aggregate?: AggregateDefinition;
   sort?: SortInstruction[];
   limit?: number;
   page?: number;
@@ -156,6 +164,7 @@ export type NormalizedCaseExpression = FilterCaseExpression;
 export interface CreateFilterIrInput {
   predicates?: FilterPredicate[];
   expression?: FilterExpressionNode;
+  aggregation?: AggregateDefinition;
   sorting?: SortInstruction[];
   pagination?: PaginationInstruction;
   projection?: ProjectionInstruction;
@@ -174,6 +183,8 @@ export interface FilterCapabilityRequirements {
 export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
   const predicates = input.predicates ?? [];
   const expression = input.expression;
+  const aggregation =
+    input.aggregation ?? normalizeLegacyAggregation(input.extensions?.sql);
   const sorting = input.sorting;
   const pagination = input.pagination;
   const projection = input.projection;
@@ -183,6 +194,7 @@ export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
   return {
     predicates,
     expression,
+    aggregation,
     sorting,
     pagination,
     projection,
@@ -190,6 +202,7 @@ export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
     extensions: input.extensions,
     conditions: predicates,
     logicalExpression: expression,
+    aggregate: aggregation,
     sort: sorting,
     limit: pagination?.limit,
     page: pagination?.page,
@@ -198,9 +211,17 @@ export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
     relationLoad: relations,
     customInclude: input.customInclude ?? relations,
     caseExpressions: sqlFeatures?.caseExpressions,
-    aggregations: sqlFeatures?.aggregations,
-    groupBy: sqlFeatures?.groupBy,
-    having: sqlFeatures?.having,
+    aggregations: aggregation?.metrics ?? sqlFeatures?.aggregations,
+    groupBy: aggregation?.groupBy
+      ? { fields: aggregation.groupBy }
+      : sqlFeatures?.groupBy,
+    having: aggregation?.having?.[0]
+      ? {
+          field: aggregation.having[0].field,
+          operator: aggregation.having[0].operator,
+          value: aggregation.having[0].value,
+        }
+      : sqlFeatures?.having,
   };
 }
 
@@ -268,14 +289,44 @@ export function getRelations(
 export function getSqlFilterFeatures(
   filter: FilterIR | NormalizedFilter,
 ): SqlFilterFeatures {
+  const aggregate = getAggregationDefinition(filter);
+
   return (
     filter.extensions?.sql ?? {
       caseExpressions: (filter as NormalizedFilter).caseExpressions,
-      aggregations: (filter as NormalizedFilter).aggregations,
-      groupBy: (filter as NormalizedFilter).groupBy,
-      having: (filter as NormalizedFilter).having,
+      aggregations: aggregate?.metrics ?? (filter as NormalizedFilter).aggregations,
+      groupBy:
+        aggregate?.groupBy
+          ? { fields: aggregate.groupBy }
+          : (filter as NormalizedFilter).groupBy,
+      having:
+        aggregate?.having?.[0]
+          ? {
+              field: aggregate.having[0].field,
+              operator: aggregate.having[0].operator,
+              value: aggregate.having[0].value,
+            }
+          : (filter as NormalizedFilter).having,
     }
   );
+}
+
+export function getAggregationDefinition(
+  filter: FilterIR | NormalizedFilter,
+): AggregateDefinition | undefined {
+  if (filter.aggregation) {
+    return filter.aggregation;
+  }
+
+  if ((filter as NormalizedFilter).aggregate) {
+    return (filter as NormalizedFilter).aggregate;
+  }
+
+  return normalizeLegacyAggregation(filter.extensions?.sql ?? {
+    aggregations: (filter as NormalizedFilter).aggregations,
+    groupBy: (filter as NormalizedFilter).groupBy,
+    having: (filter as NormalizedFilter).having,
+  });
 }
 
 export function getFilterExpression(
@@ -299,11 +350,13 @@ export function getCapabilityRequirements(
   filter: FilterIR | NormalizedFilter,
 ): FilterCapabilityRequirements {
   const sqlFeatures = getSqlFilterFeatures(filter);
+  const aggregation = getAggregationDefinition(filter);
   const predicates = [
     ...getPredicates(filter),
     ...(sqlFeatures.caseExpressions ?? []).flatMap((expression) =>
       expression.cases.map((entry) => entry.when),
     ),
+    ...(aggregation?.having ?? []),
   ];
 
   return {
@@ -313,7 +366,12 @@ export function getCapabilityRequirements(
     ),
     requiresCaseExpressions: Boolean(sqlFeatures.caseExpressions?.length),
     requiresAggregations: Boolean(
-      sqlFeatures.aggregations?.length || sqlFeatures.groupBy || sqlFeatures.having,
+      aggregation?.metrics.length ||
+        aggregation?.groupBy?.length ||
+        aggregation?.having?.length ||
+        sqlFeatures.aggregations?.length ||
+        sqlFeatures.groupBy ||
+        sqlFeatures.having,
     ),
   };
 }
@@ -343,3 +401,33 @@ const ARRAY_OPERATORS_FOR_CAPABILITIES = new Set<FilterOperator>([
   'size',
   'elemMatch',
 ]);
+
+function normalizeLegacyAggregation(
+  sqlFeatures: SqlFilterFeatures | undefined,
+): AggregateDefinition | undefined {
+  if (!sqlFeatures) {
+    return undefined;
+  }
+
+  const metrics = sqlFeatures.aggregations ?? [];
+  const groupBy = sqlFeatures.groupBy?.fields;
+  const having = sqlFeatures.having?.field
+    ? [
+        {
+          field: sqlFeatures.having.field,
+          operator: sqlFeatures.having.operator,
+          value: sqlFeatures.having.value,
+        },
+      ]
+    : undefined;
+
+  if (metrics.length === 0 && !groupBy?.length && !having?.length) {
+    return undefined;
+  }
+
+  return {
+    metrics,
+    groupBy,
+    having,
+  };
+}

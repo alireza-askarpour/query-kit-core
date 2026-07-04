@@ -15,8 +15,12 @@ import {
 } from 'sequelize';
 
 import {
+  AggregateDefinition,
+  AggregationExpression,
   FilterIR,
   FilterExpressionNode,
+  FilterPredicate,
+  getAggregationDefinition,
   getFilterExpression,
   getPagination,
   getPredicates,
@@ -52,6 +56,8 @@ export interface SequelizeQueryResult {
   offset: number;
   include?: Includeable[];
   attributes?: FindAttributeOptions;
+  group?: string[];
+  having?: ReturnType<typeof literal>;
 }
 
 type SequelizeOperatorHandler = (
@@ -75,7 +81,7 @@ export class SequelizeAdapter
     supportsRegex: true,
     supportsArrayOperators: true,
     supportsCaseExpressions: true,
-    supportsAggregations: false,
+    supportsAggregations: true,
     supportsFieldSelection: true,
     supportsIncludes: true,
     supportsPagination: true,
@@ -117,7 +123,8 @@ export class SequelizeAdapter
       getRelations(normalized),
       options.includeMap,
     );
-    const attributes = this.buildAttributes(normalized, options, dialect);
+    const aggregation = getAggregationDefinition(normalized);
+    const attributes = this.buildAttributes(normalized, options, dialect, aggregation);
     const limit = this.getLimit(pagination.limit, options);
 
     return {
@@ -127,6 +134,12 @@ export class SequelizeAdapter
       offset: this.getOffset(pagination.page, pagination.offset, limit),
       attributes,
       include: include.length ? include : undefined,
+      group: aggregation?.groupBy?.map((field) => options.fieldMap?.[field] ?? field),
+      having: aggregation?.having?.length
+        ? literal(
+            this.buildHavingClause(aggregation.having, aggregation, options, dialect),
+          )
+        : undefined,
     };
   }
 
@@ -351,23 +364,84 @@ export class SequelizeAdapter
     normalized: FilterIR,
     options: SequelizeAdapterOptions,
     dialect: SqlDialect,
+    aggregation?: AggregateDefinition,
   ): FindAttributeOptions | undefined {
     const projectionFields = getProjectionFields(normalized);
     const sqlFeatures = getSqlFilterFeatures(normalized);
-    const baseFields = projectionFields?.length ? [...projectionFields] : [];
+    const aggregateAttributes = (aggregation?.metrics ?? []).map((metric) =>
+      this.buildAggregationAttribute(metric, options),
+    );
+    const baseFields = aggregation?.groupBy?.length
+      ? aggregation.groupBy.map((field) => options.fieldMap?.[field] ?? field)
+      : projectionFields?.length
+        ? [...projectionFields]
+        : [];
     const caseAttributes = (sqlFeatures.caseExpressions ?? []).map((expression) =>
       this.buildCaseAttribute(expression, options, dialect),
     );
 
-    if (baseFields.length === 0 && caseAttributes.length === 0) {
+    if (
+      baseFields.length === 0 &&
+      caseAttributes.length === 0 &&
+      aggregateAttributes.length === 0
+    ) {
       return undefined;
     }
 
     if (baseFields.length === 0) {
-      return { include: caseAttributes };
+      return { include: [...caseAttributes, ...aggregateAttributes] };
     }
 
-    return [...baseFields, ...caseAttributes];
+    return [...baseFields, ...caseAttributes, ...aggregateAttributes];
+  }
+
+  private buildAggregationAttribute(
+    metric: AggregationExpression,
+    options: SequelizeAdapterOptions,
+  ): [ReturnType<typeof literal>, string] {
+    const alias = metric.alias ?? `${metric.operator}_${metric.field ?? 'all'}`;
+    const field = metric.field ? options.fieldMap?.[metric.field] ?? metric.field : undefined;
+
+    return [literal(this.buildAggregationSql(metric.operator, field)), alias];
+  }
+
+  private buildAggregationSql(
+    operator: AggregationExpression['operator'],
+    field?: string,
+  ): string {
+    switch (operator) {
+      case 'count':
+        return field ? `COUNT(${this.quoteIdentifier(field)})` : 'COUNT(*)';
+      case 'sum':
+        return `SUM(${this.quoteIdentifier(assertDefinedField(field, operator))})`;
+      case 'avg':
+        return `AVG(${this.quoteIdentifier(assertDefinedField(field, operator))})`;
+      case 'min':
+        return `MIN(${this.quoteIdentifier(assertDefinedField(field, operator))})`;
+      case 'max':
+        return `MAX(${this.quoteIdentifier(assertDefinedField(field, operator))})`;
+      default:
+        return this.assertNeverAggregationOperator(operator);
+    }
+  }
+
+  private buildHavingClause(
+    predicates: FilterPredicate[],
+    aggregation: AggregateDefinition,
+    options: SequelizeAdapterOptions,
+    dialect: SqlDialect,
+  ): string {
+    return predicates
+      .map((predicate) =>
+        this.buildPredicateFromExpression(
+          this.resolveHavingFieldExpression(predicate.field, aggregation, options),
+          predicate.operator,
+          predicate.value,
+          options,
+          dialect,
+        ),
+      )
+      .join(' AND ');
   }
 
   private buildCaseAttribute(
@@ -397,13 +471,27 @@ export class SequelizeAdapter
     options: SequelizeAdapterOptions,
     dialect: SqlDialect,
   ): string {
+    return this.buildPredicateFromExpression(
+      this.quoteIdentifier(field),
+      operator,
+      value,
+      options,
+      dialect,
+    );
+  }
+
+  private buildPredicateFromExpression(
+    column: string,
+    operator: NormalizedCondition['operator'],
+    value: unknown,
+    options: SequelizeAdapterOptions,
+    dialect: SqlDialect,
+  ): string {
     assertSqlOperatorSupport(
       dialect,
       operator,
       'Sequelize adapter CASE expression',
     );
-
-    const column = this.quoteIdentifier(field);
 
     switch (operator) {
       case 'eq':
@@ -465,6 +553,26 @@ export class SequelizeAdapter
     }
 
     throw new Error(`Unsupported CASE operator "${operator}"`);
+  }
+
+  private resolveHavingFieldExpression(
+    field: string,
+    aggregation: AggregateDefinition,
+    options: SequelizeAdapterOptions,
+  ): string {
+    const metric = aggregation.metrics.find(
+      (item) => (item.alias ?? `${item.operator}_${item.field ?? 'all'}`) === field,
+    );
+
+    if (metric) {
+      const mappedField = metric.field
+        ? options.fieldMap?.[metric.field] ?? metric.field
+        : undefined;
+      return this.buildAggregationSql(metric.operator, mappedField);
+    }
+
+    const mappedField = options.fieldMap?.[field] ?? field;
+    return this.quoteIdentifier(mappedField);
   }
 
   private getLimit(
@@ -715,4 +823,19 @@ export class SequelizeAdapter
   private assertNeverExpression(expression: never): never {
     throw new Error(`Unhandled filter expression node: ${JSON.stringify(expression)}`);
   }
+
+  private assertNeverAggregationOperator(operator: never): never {
+    throw new Error(`Unhandled aggregation operator: ${String(operator)}`);
+  }
+}
+
+function assertDefinedField(
+  field: string | undefined,
+  operator: AggregationExpression['operator'],
+): string {
+  if (!field) {
+    throw new Error(`Aggregation operator "${operator}" requires a field`);
+  }
+
+  return field;
 }

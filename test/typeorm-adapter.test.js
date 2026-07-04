@@ -15,6 +15,8 @@ class MockQueryBuilder {
     this.addSelectCalls = [];
     this.leftJoinCalls = [];
     this.leftJoinAndSelectCalls = [];
+    this.groupByCalls = [];
+    this.havingCalls = [];
   }
 
   andWhere(condition, parameters) {
@@ -54,6 +56,26 @@ class MockQueryBuilder {
 
   leftJoinAndSelect(path, alias) {
     this.leftJoinAndSelectCalls.push({ path, alias });
+    return this;
+  }
+
+  groupBy(group) {
+    this.groupByCalls.push(group);
+    return this;
+  }
+
+  addGroupBy(group) {
+    this.groupByCalls.push(group);
+    return this;
+  }
+
+  having(condition, parameters) {
+    this.havingCalls.push({ condition, parameters });
+    return this;
+  }
+
+  andHaving(condition, parameters) {
+    this.havingCalls.push({ condition, parameters });
     return this;
   }
 }
@@ -550,4 +572,80 @@ test('typeorm adapter fails fast for unsupported dialect operators', () => {
       ),
     /not supported by TypeORM adapter for SQL dialect "sqlite"/,
   );
+});
+
+test('typeorm adapter applies aggregation selects and grouping', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  adapter.convert(
+    {
+      conditions: [{ field: 'status', operator: 'eq', value: 'active' }],
+      aggregation: {
+        groupBy: ['status'],
+        metrics: [
+          { operator: 'count', alias: 'total' },
+          { operator: 'sum', field: 'amount', alias: 'totalAmount' },
+          { operator: 'avg', field: 'score', alias: 'avgScore' },
+        ],
+      },
+    },
+    {
+      queryBuilder,
+      rootAlias: 'user',
+    },
+  );
+
+  assert.deepEqual(queryBuilder.selectCalls[0], ['user.status']);
+  assert.deepEqual(queryBuilder.groupByCalls, ['user.status']);
+  assert.deepEqual(queryBuilder.addSelectCalls, [
+    { selection: 'COUNT(*)', aliasName: 'total' },
+    { selection: 'SUM(user.amount)', aliasName: 'totalAmount' },
+    { selection: 'AVG(user.score)', aliasName: 'avgScore' },
+  ]);
+});
+
+test('typeorm adapter applies group by without requiring metrics', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  adapter.convert(
+    {
+      aggregation: {
+        groupBy: ['status'],
+        metrics: [],
+      },
+    },
+    {
+      queryBuilder,
+      rootAlias: 'user',
+    },
+  );
+
+  assert.deepEqual(queryBuilder.selectCalls[0], ['user.status']);
+  assert.deepEqual(queryBuilder.groupByCalls, ['user.status']);
+});
+
+test('typeorm adapter builds having using aggregation alias expression', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  adapter.convert(
+    {
+      aggregation: {
+        groupBy: ['status'],
+        metrics: [{ operator: 'sum', field: 'amount', alias: 'totalAmount' }],
+        having: [{ field: 'totalAmount', operator: 'gt', value: 100 }],
+      },
+    },
+    {
+      queryBuilder,
+      rootAlias: 'user',
+    },
+  );
+
+  assert.deepEqual(queryBuilder.havingCalls[0], {
+    condition: 'SUM(user.amount) > 100',
+    parameters: undefined,
+  });
 });

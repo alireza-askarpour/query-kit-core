@@ -25,3 +25,21 @@ test('mc format parses mongo operators and populate directive', () => {
   assert.deepEqual(result.relationLoad, ['profile', 'orders.items']);
   assert.equal(result.limit, 20);
 });
+
+test('mc format parses aggregation and group by directives', () => {
+  const format = new MCFormat();
+
+  const result = format.parse({
+    filterString:
+      'status:$eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmount;@having:total:$gte:1',
+  });
+
+  assert.deepEqual(result.aggregation, {
+    groupBy: ['status'],
+    metrics: [
+      { operator: 'count', alias: 'total' },
+      { operator: 'sum', field: 'amount', alias: 'totalAmount' },
+    ],
+    having: [{ field: 'total', operator: 'gte', value: 1 }],
+  });
+});

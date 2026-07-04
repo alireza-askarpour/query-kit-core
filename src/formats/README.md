@@ -7,6 +7,7 @@ Formats define how a query syntax is interpreted.
 - parse a query string into `FilterIR`
 - optionally validate the syntax and values
 - normalize operators and directive semantics
+- normalize logical groups and aggregation directives into neutral IR
 - declare explicit capability metadata for processor preflight checks
 
 ## Current formats

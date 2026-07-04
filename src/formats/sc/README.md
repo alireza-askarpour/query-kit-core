@@ -43,11 +43,15 @@ Supported directives inside the query string:
 - `@offset`
 - `@fields`
 - `@include`
+- `@groupBy`
+- `@aggregate`
+- `@having`
 
 Examples:
 
 ```text
 status:eq:active;@sort:-createdAt;@limit:20
+status:eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmount;@having:totalAmount:gte:100
 ```
 
 ## Internal structure

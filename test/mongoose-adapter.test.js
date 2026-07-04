@@ -42,6 +42,36 @@ class MockMongooseQuery {
   }
 }
 
+class MockMongooseAggregate {
+  constructor(pipeline) {
+    this.pipeline = pipeline;
+    this.sortCalls = [];
+    this.limitCalls = [];
+    this.skipCalls = [];
+    this.projectCalls = [];
+  }
+
+  sort(value) {
+    this.sortCalls.push(value);
+    return this;
+  }
+
+  limit(value) {
+    this.limitCalls.push(value);
+    return this;
+  }
+
+  skip(value) {
+    this.skipCalls.push(value);
+    return this;
+  }
+
+  project(value) {
+    this.projectCalls.push(value);
+    return this;
+  }
+}
+
 class MockModel {
   constructor() {
     this.calls = [];
@@ -50,6 +80,12 @@ class MockModel {
   find(filter, projection) {
     const query = new MockMongooseQuery(filter, projection);
     this.calls.push({ filter, projection, query });
+    return query;
+  }
+
+  aggregate(pipeline) {
+    const query = new MockMongooseAggregate(pipeline);
+    this.calls.push({ pipeline, query });
     return query;
   }
 }
@@ -154,4 +190,86 @@ test('mongoose adapter supports logical groups and negation', () => {
       },
     ],
   });
+});
+
+test('mongoose adapter builds aggregation pipeline', () => {
+  const adapter = new MongooseAdapter();
+  const model = new MockModel();
+
+  const query = adapter.convert(
+    {
+      conditions: [{ field: 'status', operator: 'eq', value: 'active' }],
+      sort: [{ field: 'totalAmount', direction: 'desc' }],
+      limit: 5,
+      aggregation: {
+        groupBy: ['status'],
+        metrics: [
+          { operator: 'count', alias: 'total' },
+          { operator: 'sum', field: 'amount', alias: 'totalAmount' },
+          { operator: 'avg', field: 'score', alias: 'avgScore' },
+        ],
+      },
+    },
+    { model },
+  );
+
+  assert.equal(query, model.calls[0].query);
+  assert.deepEqual(model.calls[0].pipeline, [
+    { $match: { status: 'active' } },
+    {
+      $group: {
+        _id: { status: '$status' },
+        total: { $sum: 1 },
+        totalAmount: { $sum: '$amount' },
+        avgScore: { $avg: '$score' },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: '$_id.status',
+        total: 1,
+        totalAmount: 1,
+        avgScore: 1,
+      },
+    },
+    { $sort: { totalAmount: -1 } },
+    { $limit: 5 },
+  ]);
+});
+
+test('mongoose adapter supports grouping without metrics and applies having', () => {
+  const adapter = new MongooseAdapter();
+  const model = new MockModel();
+
+  adapter.convert(
+    {
+      aggregation: {
+        groupBy: ['status'],
+        metrics: [],
+        having: [{ field: 'status', operator: 'eq', value: 'active' }],
+      },
+    },
+    { model },
+  );
+
+  assert.deepEqual(model.calls[0].pipeline, [
+    {
+      $group: {
+        _id: { status: '$status' },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: '$_id.status',
+      },
+    },
+    {
+      $match: {
+        status: 'active',
+      },
+    },
+    { $limit: 100 },
+  ]);
 });

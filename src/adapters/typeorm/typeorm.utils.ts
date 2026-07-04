@@ -1,4 +1,7 @@
 import {
+  AggregateDefinition,
+  AggregationExpression,
+  FilterPredicate,
   FilterIR,
   getPagination,
   getRelations,
@@ -157,6 +160,49 @@ export function applyCaseExpressions<
       expression.outputField,
     );
   });
+}
+
+export function applyAggregations<
+  TQueryBuilder extends TypeOrmQueryBuilderLike,
+>(
+  queryBuilder: TQueryBuilder,
+  aggregation: AggregateDefinition | undefined,
+  options: TypeOrmAdapterOptions<TQueryBuilder>,
+  buildMetricExpression: (metric: AggregationExpression) => string,
+  buildHavingExpression?: (predicate: FilterPredicate) => string,
+): void {
+  if (!aggregation) {
+    return;
+  }
+
+  const groupFields =
+    aggregation.groupBy?.map((field) => resolveField(field, options)) ?? [];
+
+  if (groupFields.length > 0) {
+    queryBuilder.select(groupFields);
+  }
+
+  aggregation.metrics.forEach((metric) => {
+    queryBuilder.addSelect(
+      buildMetricExpression(metric),
+      metric.alias ?? `${metric.operator}_${metric.field ?? 'all'}`,
+    );
+  });
+
+  if (groupFields.length > 0 && queryBuilder.groupBy) {
+    queryBuilder.groupBy(groupFields[0]);
+    groupFields.slice(1).forEach((field) => {
+      queryBuilder.addGroupBy?.(field);
+    });
+  }
+
+  if (aggregation.having?.length && buildHavingExpression) {
+    const [first, ...rest] = aggregation.having;
+    queryBuilder.having?.(buildHavingExpression(first));
+    rest.forEach((predicate) => {
+      queryBuilder.andHaving?.(buildHavingExpression(predicate));
+    });
+  }
 }
 
 export function inlineCondition(

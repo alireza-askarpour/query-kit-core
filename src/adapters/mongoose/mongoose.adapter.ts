@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AggregateDefinition,
+  AggregationExpression,
   FilterIR,
   FilterExpressionNode,
+  getAggregationDefinition,
   getFilterExpression,
   getPagination,
   getPredicates,
@@ -24,6 +27,7 @@ export interface MongooseModelLike<TResult = unknown> {
     filter?: Record<string, unknown>,
     projection?: string | Record<string, 0 | 1>,
   ): MongooseQueryLike<TResult>;
+  aggregate?(pipeline?: Record<string, unknown>[]): MongooseAggregateLike<TResult>;
 }
 
 export interface MongooseQueryLike<TResult = unknown> {
@@ -39,6 +43,13 @@ export interface MongooseQueryLike<TResult = unknown> {
   ): this;
 }
 
+export interface MongooseAggregateLike<TResult = unknown> {
+  sort(sort: Record<string, 1 | -1>): this;
+  limit(limit: number): this;
+  skip(offset: number): this;
+  project(projection: Record<string, unknown>): this;
+}
+
 export interface MongooseAdapterOptions<TResult = unknown> {
   model: MongooseModelLike<TResult>;
   fieldMap?: Record<string, string>;
@@ -49,14 +60,18 @@ export interface MongooseAdapterOptions<TResult = unknown> {
 
 @Injectable()
 export class MongooseAdapter
-  implements QueryAdapter<MongooseQueryLike, MongooseAdapterOptions>
+  implements
+    QueryAdapter<
+      MongooseQueryLike | MongooseAggregateLike,
+      MongooseAdapterOptions
+    >
 {
   ormName = 'mongoose';
   capabilities = {
     supportsRegex: true,
     supportsArrayOperators: true,
     supportsCaseExpressions: false,
-    supportsAggregations: false,
+    supportsAggregations: true,
     supportsFieldSelection: true,
     supportsIncludes: true,
     supportsPagination: true,
@@ -70,7 +85,13 @@ export class MongooseAdapter
   convert<TResult = unknown>(
     normalized: FilterIR,
     options: MongooseAdapterOptions<TResult>,
-  ): MongooseQueryLike<TResult> {
+  ): MongooseQueryLike<TResult> | MongooseAggregateLike<TResult> {
+    const aggregation = getAggregationDefinition(normalized);
+
+    if (aggregation) {
+      return this.buildAggregateQuery(normalized, aggregation, options);
+    }
+
     const filter = hasComplexLogicalExpression(normalized)
       ? this.buildExpressionFilter(
           getFilterExpression(normalized),
@@ -104,6 +125,134 @@ export class MongooseAdapter
     }
 
     return query;
+  }
+
+  private buildAggregateQuery<TResult = unknown>(
+    normalized: FilterIR,
+    aggregation: AggregateDefinition,
+    options: MongooseAdapterOptions<TResult>,
+  ): MongooseAggregateLike<TResult> {
+    if (!options.model.aggregate) {
+      throw new Error('Mongoose model must expose aggregate() for aggregation queries');
+    }
+
+    const pipeline = this.buildAggregationPipeline(normalized, aggregation, options);
+    return options.model.aggregate(pipeline);
+  }
+
+  private buildAggregationPipeline(
+    normalized: FilterIR,
+    aggregation: AggregateDefinition,
+    options: MongooseAdapterOptions,
+  ): Record<string, unknown>[] {
+    const pipeline: Record<string, unknown>[] = [];
+    const filter = hasComplexLogicalExpression(normalized)
+      ? this.buildExpressionFilter(
+          getFilterExpression(normalized),
+          options.fieldMap,
+        )
+      : this.buildFilter(getPredicates(normalized), options.fieldMap);
+
+    if (Object.keys(filter).length > 0) {
+      pipeline.push({ $match: filter });
+    }
+
+    const groupStage = this.buildGroupStage(aggregation, options.fieldMap);
+    pipeline.push({ $group: groupStage });
+
+    pipeline.push({
+      $project: this.buildAggregationProjection(aggregation),
+    });
+
+    if (aggregation.having?.length) {
+      pipeline.push({
+        $match: this.buildFilter(aggregation.having),
+      });
+    }
+
+    const sort = this.buildSort(getSorting(normalized), options.fieldMap);
+    if (Object.keys(sort).length > 0) {
+      pipeline.push({ $sort: sort });
+    }
+
+    const pagination = getPagination(normalized);
+    const limit = this.getLimit(pagination.limit, options);
+    const offset = this.getOffset(pagination.page, pagination.offset, limit);
+
+    if (offset > 0) {
+      pipeline.push({ $skip: offset });
+    }
+
+    pipeline.push({ $limit: limit });
+
+    return pipeline;
+  }
+
+  private buildGroupStage(
+    aggregation: AggregateDefinition,
+    fieldMap?: Record<string, string>,
+  ): Record<string, unknown> {
+    const groupId =
+      aggregation.groupBy?.length
+        ? aggregation.groupBy.reduce<Record<string, string>>((accumulator, field) => {
+            accumulator[field] = `$${fieldMap?.[field] ?? field}`;
+            return accumulator;
+          }, {})
+        : null;
+
+    return aggregation.metrics.reduce<Record<string, unknown>>(
+      (accumulator, metric) => {
+        accumulator._id = groupId;
+        accumulator[this.getAggregationAlias(metric)] =
+          this.buildMongoAccumulator(metric, fieldMap);
+        return accumulator;
+      },
+      { _id: groupId },
+    );
+  }
+
+  private buildAggregationProjection(
+    aggregation: AggregateDefinition,
+  ): Record<string, unknown> {
+    const projection: Record<string, unknown> = {
+      _id: 0,
+    };
+
+    for (const groupField of aggregation.groupBy ?? []) {
+      projection[groupField] = `$_id.${groupField}`;
+    }
+
+    for (const metric of aggregation.metrics) {
+      projection[this.getAggregationAlias(metric)] = 1;
+    }
+
+    return projection;
+  }
+
+  private buildMongoAccumulator(
+    metric: AggregationExpression,
+    fieldMap?: Record<string, string>,
+  ): Record<string, unknown> {
+    const field = metric.field ? `$${fieldMap?.[metric.field] ?? metric.field}` : 1;
+
+    switch (metric.operator) {
+      case 'count':
+        return { $sum: 1 };
+      case 'sum':
+        return { $sum: field };
+      case 'avg':
+        return { $avg: field };
+      case 'min':
+        return { $min: field };
+      case 'max':
+        return { $max: field };
+      default:
+        return this.assertNeverAggregationOperator(metric.operator);
+    }
+  }
+
+  private getAggregationAlias(metric: AggregationExpression): string {
+    return metric.alias ?? `${metric.operator}_${metric.field ?? 'all'}`;
   }
 
   private buildFilter(
@@ -282,5 +431,9 @@ export class MongooseAdapter
 
   private assertNeverExpression(expression: never): never {
     throw new Error(`Unhandled filter expression node: ${JSON.stringify(expression)}`);
+  }
+
+  private assertNeverAggregationOperator(operator: never): never {
+    throw new Error(`Unhandled aggregation operator: ${String(operator)}`);
   }
 }

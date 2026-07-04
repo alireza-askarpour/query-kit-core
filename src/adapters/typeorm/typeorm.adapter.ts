@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AggregationExpression,
   FilterIR,
   FilterExpressionNode,
+  FilterPredicate,
+  getAggregationDefinition,
   getFilterExpression,
   getProjectionFields,
   getPredicates,
@@ -15,6 +18,7 @@ import {
 } from '../../core';
 import { assertSqlOperatorSupport } from '../sql-dialects';
 import {
+  applyAggregations,
   applyCaseExpressions,
   applyFieldSelection,
   applyIncludes,
@@ -45,7 +49,7 @@ export class TypeOrmAdapter
     supportsRegex: true,
     supportsArrayOperators: true,
     supportsCaseExpressions: true,
-    supportsAggregations: false,
+    supportsAggregations: true,
     supportsFieldSelection: true,
     supportsIncludes: true,
     supportsPagination: true,
@@ -96,10 +100,21 @@ export class TypeOrmAdapter
     }
 
     const sqlFeatures = getSqlFilterFeatures(normalized);
+    const aggregation = getAggregationDefinition(normalized);
+    applyAggregations(
+      queryBuilder,
+      aggregation,
+      options,
+      (metric) => this.buildAggregationExpression(metric, options),
+      (predicate) =>
+        this.buildHavingExpression(predicate, aggregation, options, operatorHandlers),
+    );
     applyCaseExpressions(queryBuilder, sqlFeatures.caseExpressions, (expression, index) =>
       this.buildCaseExpression(expression, index, options, operatorHandlers),
     );
-    applyFieldSelection(queryBuilder, getProjectionFields(normalized), options);
+    if (!aggregation) {
+      applyFieldSelection(queryBuilder, getProjectionFields(normalized), options);
+    }
     applyIncludes(
       queryBuilder,
       getRelations(normalized),
@@ -258,7 +273,82 @@ export class TypeOrmAdapter
     return `${clauses}${elseClause}`;
   }
 
+  private buildAggregationExpression<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+    metric: AggregationExpression,
+    options: TypeOrmAdapterOptions<TQueryBuilder>,
+  ): string {
+    const field = metric.field ? resolveField(metric.field, options) : undefined;
+
+    switch (metric.operator) {
+      case 'count':
+        return field ? `COUNT(${field})` : 'COUNT(*)';
+      case 'sum':
+        return `SUM(${this.requireAggregationField(field, metric.operator)})`;
+      case 'avg':
+        return `AVG(${this.requireAggregationField(field, metric.operator)})`;
+      case 'min':
+        return `MIN(${this.requireAggregationField(field, metric.operator)})`;
+      case 'max':
+        return `MAX(${this.requireAggregationField(field, metric.operator)})`;
+      default:
+        return this.assertNeverAggregationOperator(metric.operator);
+    }
+  }
+
+  private buildHavingExpression<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+    predicate: FilterPredicate,
+    aggregation: ReturnType<typeof getAggregationDefinition>,
+    options: TypeOrmAdapterOptions<TQueryBuilder>,
+    operatorHandlers: typeof this.operatorHandlers,
+  ): string {
+    const field = this.resolveHavingFieldExpression(
+      predicate.field,
+      aggregation,
+      options,
+    );
+    const clause = buildWhereClause(
+      operatorHandlers,
+      field,
+      predicate.operator,
+      predicate.value,
+      createParameterName(predicate.field, predicate.operator),
+    );
+
+    return inlineCondition(clause, escapeLiteral);
+  }
+
+  private resolveHavingFieldExpression<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+    field: string,
+    aggregation: ReturnType<typeof getAggregationDefinition>,
+    options: TypeOrmAdapterOptions<TQueryBuilder>,
+  ): string {
+    const metric = aggregation?.metrics.find(
+      (item) => (item.alias ?? `${item.operator}_${item.field ?? 'all'}`) === field,
+    );
+
+    if (metric) {
+      return this.buildAggregationExpression(metric, options);
+    }
+
+    return resolveField(field, options);
+  }
+
+  private requireAggregationField(
+    field: string | undefined,
+    operator: AggregationExpression['operator'],
+  ): string {
+    if (!field) {
+      throw new Error(`Aggregation operator "${operator}" requires a field`);
+    }
+
+    return field;
+  }
+
   private assertNeverExpression(expression: never): never {
     throw new Error(`Unhandled filter expression node: ${JSON.stringify(expression)}`);
+  }
+
+  private assertNeverAggregationOperator(operator: never): never {
+    throw new Error(`Unhandled aggregation operator: ${String(operator)}`);
   }
 }

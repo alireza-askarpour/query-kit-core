@@ -16,6 +16,7 @@ The project is built around three concepts:
 
 - Built-in `SC` format using `field:operator:value`
 - Built-in `MC` format using `field:$operator:value`
+- Neutral IR with logical groups and aggregation metadata
 - Built-in `SC` format validator
 - Built-in `MC` format validator
 - Built-in adapter for `Mongoose`
@@ -88,6 +89,25 @@ const result = processor.processWith({
   },
 });
 ```
+
+## Aggregation example
+
+```ts
+const result = processor.processWith({
+  query: 'status:eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmount,avg(score):avgScore',
+  adapterOptions: {
+    model: ProductModel,
+    rootAlias: 'product',
+  },
+});
+```
+
+Supported aggregation directives in built-in formats:
+
+- `@groupBy:status,category`
+- `@aggregate:count(*):total`
+- `@aggregate:sum(amount):totalAmount,avg(score):avgScore`
+- `@having:totalAmount:gte:100`
 
 ## Main public APIs
 
