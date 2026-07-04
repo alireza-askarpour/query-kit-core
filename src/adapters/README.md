@@ -22,6 +22,13 @@ Adapters convert a `FilterIR` into ORM-native output.
 
 Adapters are registered through `AdapterRegistration` / `AdapterBundle`.
 
+Each adapter can now declare explicit capability metadata, such as:
+
+- `supportsRegex`
+- `supportsArrayOperators`
+- `supportsCaseExpressions`
+- `supportsAggregations`
+
 This allows future additions such as:
 
 - capability discovery

@@ -40,6 +40,20 @@ export class TypeOrmAdapter
   implements QueryAdapter<TypeOrmQueryBuilderLike, TypeOrmAdapterOptions>
 {
   ormName = 'typeorm';
+  capabilities = {
+    supportsRegex: true,
+    supportsArrayOperators: true,
+    supportsCaseExpressions: true,
+    supportsAggregations: false,
+    supportsFieldSelection: true,
+    supportsIncludes: true,
+    supportsPagination: true,
+    supportsSorting: true,
+  };
+  metadata = {
+    family: 'sql',
+    engine: 'typeorm',
+  };
   private readonly operatorHandlers: Record<
     NormalizedCondition['operator'],
     TypeOrmOperatorHandler

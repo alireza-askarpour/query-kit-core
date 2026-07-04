@@ -71,6 +71,20 @@ export class SequelizeAdapter
   implements QueryAdapter<SequelizeQueryResult, SequelizeAdapterOptions>
 {
   ormName = 'sequelize';
+  capabilities = {
+    supportsRegex: true,
+    supportsArrayOperators: true,
+    supportsCaseExpressions: true,
+    supportsAggregations: false,
+    supportsFieldSelection: true,
+    supportsIncludes: true,
+    supportsPagination: true,
+    supportsSorting: true,
+  };
+  metadata = {
+    family: 'sql',
+    engine: 'sequelize',
+  };
 
   convert(
     normalized: FilterIR,

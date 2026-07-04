@@ -8,11 +8,15 @@ const {
   FilterRegistry,
 } = require('../dist/core/services/filter-registry.service.js');
 const { SCFormat } = require('../dist/formats/sc/sc-format.service.js');
+const {
+  createFilterIR,
+} = require('../dist/core/types/filter-ir.interface.js');
 
 class MockAdapter {
-  constructor() {
+  constructor(capabilities) {
     this.ormName = 'mock';
     this.calls = [];
+    this.capabilities = capabilities;
   }
 
   convert(normalized, options) {
@@ -49,6 +53,19 @@ class FailingValidator {
       errors: [{ field: 'status', message: 'invalid', code: 'INVALID' }],
       warnings: [{ field: 'status', message: 'warn', code: 'WARN' }],
     };
+  }
+}
+
+class CapabilityFormat {
+  constructor({ capabilities, metadata, parsed }) {
+    this.name = 'capability';
+    this.capabilities = capabilities;
+    this.metadata = metadata;
+    this.parsed = parsed;
+  }
+
+  parse() {
+    return this.parsed;
   }
 }
 
@@ -213,4 +230,158 @@ test('processWith can disable validation per request', () => {
   });
 
   assert.equal(validator.calls.length, 0);
+});
+
+test('processWith fails fast when format capabilities reject regex usage', () => {
+  const registry = new FilterRegistry();
+  registry.registerFormatRegistration({
+    format: new CapabilityFormat({
+      capabilities: {
+        supportsRegex: false,
+      },
+      parsed: createFilterIR({
+        predicates: [{ field: 'name', operator: 'regex', value: '^A' }],
+      }),
+    }),
+  });
+  registry.registerAdapter(
+    new MockAdapter({
+      supportsRegex: true,
+    }),
+  );
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'capability',
+    defaultOrm: 'mock',
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'ignored',
+      }),
+    /Format "capability" does not support: regex operators/,
+  );
+});
+
+test('processWith fails fast when adapter capabilities reject case expressions', () => {
+  const registry = new FilterRegistry();
+  registry.registerFormatRegistration({
+    format: new CapabilityFormat({
+      capabilities: {
+        supportsCaseExpressions: true,
+      },
+      parsed: createFilterIR({
+        predicates: [],
+        extensions: {
+          sql: {
+            caseExpressions: [
+              {
+                outputField: 'priority',
+                cases: [
+                  {
+                    when: { field: 'amount', operator: 'gte', value: 100 },
+                    then: 'high',
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      }),
+    }),
+  });
+  registry.registerAdapter(
+    new MockAdapter({
+      supportsCaseExpressions: false,
+    }),
+  );
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'capability',
+    defaultOrm: 'mock',
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'ignored',
+      }),
+    /Adapter "mock" does not support: CASE expressions/,
+  );
+});
+
+test('processWith fails fast when adapter capabilities reject array operators', () => {
+  const registry = new FilterRegistry();
+  registry.registerFormatRegistration({
+    format: new CapabilityFormat({
+      capabilities: {
+        supportsArrayOperators: true,
+      },
+      parsed: createFilterIR({
+        predicates: [{ field: 'tags', operator: 'in', value: ['new', 'hot'] }],
+      }),
+    }),
+  });
+  registry.registerAdapter(
+    new MockAdapter({
+      supportsArrayOperators: false,
+    }),
+  );
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'capability',
+    defaultOrm: 'mock',
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'ignored',
+      }),
+    /Adapter "mock" does not support: array operators/,
+  );
+});
+
+test('processWith fails fast when format capabilities reject aggregations', () => {
+  const registry = new FilterRegistry();
+  registry.registerFormatRegistration({
+    format: new CapabilityFormat({
+      capabilities: {
+        supportsAggregations: false,
+      },
+      parsed: createFilterIR({
+        predicates: [],
+        extensions: {
+          sql: {
+            aggregations: [
+              {
+                field: 'amount',
+                operator: 'sum',
+                alias: 'totalAmount',
+              },
+            ],
+          },
+        },
+      }),
+    }),
+  });
+  registry.registerAdapter(
+    new MockAdapter({
+      supportsAggregations: true,
+    }),
+  );
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'capability',
+    defaultOrm: 'mock',
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'ignored',
+      }),
+    /Format "capability" does not support: aggregations/,
+  );
 });

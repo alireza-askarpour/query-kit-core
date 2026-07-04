@@ -22,6 +22,20 @@ import {
 @Injectable()
 export class SCFormat implements FilterFormat {
   name = 'scfilter';
+  capabilities = {
+    supportsRegex: true,
+    supportsArrayOperators: true,
+    supportsCaseExpressions: true,
+    supportsAggregations: false,
+    supportsFieldSelection: true,
+    supportsIncludes: true,
+    supportsPagination: true,
+    supportsSorting: true,
+  };
+  metadata = {
+    family: 'sql',
+    syntax: 'sc',
+  };
 
   private readonly operatorAliases: Record<string, FilterOperator> = {
     eq: 'eq',

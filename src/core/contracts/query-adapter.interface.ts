@@ -1,7 +1,13 @@
 import { FilterIR } from '../types/normalized-filter.interface';
+import {
+  FilterCapabilities,
+  FilterMetadata,
+} from './filter-capabilities.interface';
 
 export interface QueryAdapter<TQueryBuilder = unknown, TOptions = unknown> {
   ormName: string;
+  capabilities?: FilterCapabilities;
+  metadata?: FilterMetadata;
   convert(
     normalized: FilterIR,
     options?: TOptions,

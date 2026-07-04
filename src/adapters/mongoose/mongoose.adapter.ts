@@ -52,6 +52,20 @@ export class MongooseAdapter
   implements QueryAdapter<MongooseQueryLike, MongooseAdapterOptions>
 {
   ormName = 'mongoose';
+  capabilities = {
+    supportsRegex: true,
+    supportsArrayOperators: true,
+    supportsCaseExpressions: false,
+    supportsAggregations: false,
+    supportsFieldSelection: true,
+    supportsIncludes: true,
+    supportsPagination: true,
+    supportsSorting: true,
+  };
+  metadata = {
+    family: 'mongodb',
+    engine: 'mongoose',
+  };
 
   convert<TResult = unknown>(
     normalized: FilterIR,

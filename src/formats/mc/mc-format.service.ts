@@ -11,6 +11,20 @@ import {
 @Injectable()
 export class MCFormat implements FilterFormat {
   name = 'mcfilter';
+  capabilities = {
+    supportsRegex: true,
+    supportsArrayOperators: true,
+    supportsCaseExpressions: false,
+    supportsAggregations: false,
+    supportsFieldSelection: true,
+    supportsIncludes: true,
+    supportsPagination: true,
+    supportsSorting: true,
+  };
+  metadata = {
+    family: 'mongodb',
+    syntax: 'mc',
+  };
 
   private readonly operatorAliases: Record<string, FilterOperator> = {
     eq: 'eq',

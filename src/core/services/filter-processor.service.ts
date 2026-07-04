@@ -6,10 +6,12 @@ import {
 } from '@nestjs/common';
 import { FilterRegistry } from './filter-registry.service';
 import {
+  FilterCapabilities,
   FilterProcessRequest,
   FilterRuntimeOptions,
   Query,
 } from '../contracts';
+import { FilterIR, getCapabilityRequirements } from '../types';
 import { QueryAdapter } from '../contracts/query-adapter.interface';
 
 @Injectable()
@@ -60,10 +62,25 @@ export class FilterProcessor {
       request.pipeline,
     );
 
-    const format = this.registry.getFormat(formatName);
+    const formatRegistration = this.registry.getFormatRegistration(formatName);
+    const format = formatRegistration.format;
     const normalized = format.parse(normalizedQuery);
+    this.validateCapabilities(
+      'Format',
+      format.name,
+      formatRegistration.capabilities,
+      normalized,
+    );
+
     const adapter = this.registry.getAdapter<TQueryResult, TAdapterOptions>(
       ormName,
+    );
+    const adapterRegistration = this.registry.getAdapterRegistration(ormName);
+    this.validateCapabilities(
+      'Adapter',
+      adapter.ormName,
+      adapterRegistration.capabilities,
+      normalized,
     );
 
     return adapter.convert(normalized, request.adapterOptions);
@@ -100,5 +117,52 @@ export class FilterProcessor {
         warnings: result.warnings,
       });
     }
+  }
+
+  private validateCapabilities(
+    targetType: 'Format' | 'Adapter',
+    targetName: string,
+    capabilities: FilterCapabilities | undefined,
+    normalized: FilterIR,
+  ): void {
+    if (!capabilities) {
+      return;
+    }
+
+    const requirements = getCapabilityRequirements(normalized);
+    const missingFeatures: string[] = [];
+
+    if (requirements.requiresRegex && capabilities.supportsRegex === false) {
+      missingFeatures.push('regex operators');
+    }
+
+    if (
+      requirements.requiresArrayOperators &&
+      capabilities.supportsArrayOperators === false
+    ) {
+      missingFeatures.push('array operators');
+    }
+
+    if (
+      requirements.requiresCaseExpressions &&
+      capabilities.supportsCaseExpressions === false
+    ) {
+      missingFeatures.push('CASE expressions');
+    }
+
+    if (
+      requirements.requiresAggregations &&
+      capabilities.supportsAggregations === false
+    ) {
+      missingFeatures.push('aggregations');
+    }
+
+    if (missingFeatures.length === 0) {
+      return;
+    }
+
+    throw new BadRequestException(
+      `${targetType} "${targetName}" does not support: ${missingFeatures.join(', ')}`,
+    );
   }
 }

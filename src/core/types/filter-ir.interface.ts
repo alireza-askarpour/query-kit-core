@@ -164,6 +164,13 @@ export interface CreateFilterIrInput {
   customInclude?: RelationDirective;
 }
 
+export interface FilterCapabilityRequirements {
+  requiresRegex: boolean;
+  requiresArrayOperators: boolean;
+  requiresCaseExpressions: boolean;
+  requiresAggregations: boolean;
+}
+
 export function createFilterIR(input: CreateFilterIrInput): NormalizedFilter {
   const predicates = input.predicates ?? [];
   const expression = input.expression;
@@ -288,6 +295,29 @@ export function hasComplexLogicalExpression(
   return expression.kind !== 'predicate';
 }
 
+export function getCapabilityRequirements(
+  filter: FilterIR | NormalizedFilter,
+): FilterCapabilityRequirements {
+  const sqlFeatures = getSqlFilterFeatures(filter);
+  const predicates = [
+    ...getPredicates(filter),
+    ...(sqlFeatures.caseExpressions ?? []).flatMap((expression) =>
+      expression.cases.map((entry) => entry.when),
+    ),
+  ];
+
+  return {
+    requiresRegex: predicates.some((predicate) => predicate.operator === 'regex'),
+    requiresArrayOperators: predicates.some((predicate) =>
+      ARRAY_OPERATORS_FOR_CAPABILITIES.has(predicate.operator),
+    ),
+    requiresCaseExpressions: Boolean(sqlFeatures.caseExpressions?.length),
+    requiresAggregations: Boolean(
+      sqlFeatures.aggregations?.length || sqlFeatures.groupBy || sqlFeatures.having,
+    ),
+  };
+}
+
 function collectPredicates(expression: FilterExpressionNode): FilterPredicate[] {
   switch (expression.kind) {
     case 'predicate':
@@ -304,3 +334,12 @@ function collectPredicates(expression: FilterExpressionNode): FilterPredicate[] 
 function assertNeverExpression(expression: never): never {
   throw new Error(`Unhandled filter expression node: ${JSON.stringify(expression)}`);
 }
+
+const ARRAY_OPERATORS_FOR_CAPABILITIES = new Set<FilterOperator>([
+  'in',
+  'notIn',
+  'any',
+  'all',
+  'size',
+  'elemMatch',
+]);

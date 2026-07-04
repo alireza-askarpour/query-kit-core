@@ -2,9 +2,15 @@ import {
   FilterIR,
   RelationDirective,
 } from '../types/normalized-filter.interface';
+import {
+  FilterCapabilities,
+  FilterMetadata,
+} from './filter-capabilities.interface';
 
 export interface FilterFormat {
   name: string;
+  capabilities?: FilterCapabilities;
+  metadata?: FilterMetadata;
   parse(query: Query): FilterIR;
   serialize?(filter: FilterIR): string;
 }

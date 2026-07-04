@@ -52,3 +52,26 @@ test('registerAdapterRegistration stores metadata and capabilities', () => {
   });
 });
 
+test('registerAdapterRegistration falls back to adapter instance capabilities', () => {
+  const registry = new FilterRegistry();
+  const adapter = new MockAdapter('mongoose');
+  adapter.capabilities = {
+    supportsRegex: true,
+    supportsArrayOperators: true,
+  };
+  adapter.metadata = {
+    family: 'mongodb',
+  };
+
+  registry.registerAdapterRegistration({ adapter });
+
+  const registration = registry.getAdapterRegistration('mongoose');
+
+  assert.deepEqual(registration.capabilities, {
+    supportsRegex: true,
+    supportsArrayOperators: true,
+  });
+  assert.deepEqual(registration.metadata, {
+    family: 'mongodb',
+  });
+});
