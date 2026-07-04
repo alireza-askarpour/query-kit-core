@@ -170,13 +170,16 @@ export function inlineCondition(
   let expression = input.condition;
 
   Object.entries(input.parameters).forEach(([key, value]) => {
-    const replacement = Array.isArray(value)
-      ? `(${value.map((item) => escapeLiteral(item)).join(', ')})`
+    const spreadReplacement = Array.isArray(value)
+      ? value.map((item) => escapeLiteral(item)).join(', ')
+      : escapeLiteral(value);
+    const standardReplacement = Array.isArray(value)
+      ? `(${spreadReplacement})`
       : escapeLiteral(value);
 
     expression = expression
-      .replace(new RegExp(`:\\.\\.\\.${key}\\b`, 'g'), replacement)
-      .replace(new RegExp(`:${key}\\b`, 'g'), replacement);
+      .replace(new RegExp(`:\\.\\.\\.${key}\\b`, 'g'), spreadReplacement)
+      .replace(new RegExp(`:${key}\\b`, 'g'), standardReplacement);
   });
 
   return expression;

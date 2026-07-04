@@ -3,6 +3,7 @@ import {
   FilterIR,
   FilterExpressionNode,
   getFilterExpression,
+  getProjectionFields,
   getPredicates,
   getRelations,
   getSorting,
@@ -98,7 +99,7 @@ export class TypeOrmAdapter
     applyCaseExpressions(queryBuilder, sqlFeatures.caseExpressions, (expression, index) =>
       this.buildCaseExpression(expression, index, options, operatorHandlers),
     );
-    applyFieldSelection(queryBuilder, normalized.projection?.fields, options);
+    applyFieldSelection(queryBuilder, getProjectionFields(normalized), options);
     applyIncludes(
       queryBuilder,
       getRelations(normalized),
@@ -116,6 +117,14 @@ export class TypeOrmAdapter
     options: TypeOrmAdapterOptions<TQueryBuilder>,
     operatorHandlers: typeof this.operatorHandlers,
   ): void {
+    const handler = operatorHandlers[condition.operator];
+
+    if (!handler) {
+      throw new Error(
+        `Operator "${condition.operator}" not supported in TypeORM adapter`,
+      );
+    }
+
     assertSqlOperatorSupport(
       options.dialect ?? 'postgres',
       condition.operator,
@@ -142,6 +151,14 @@ export class TypeOrmAdapter
   ): { condition: string; parameters?: Record<string, unknown> } {
     switch (expression.kind) {
       case 'predicate': {
+        const handler = operatorHandlers[expression.predicate.operator];
+
+        if (!handler) {
+          throw new Error(
+            `Operator "${expression.predicate.operator}" not supported in TypeORM adapter`,
+          );
+        }
+
         assertSqlOperatorSupport(
           options.dialect ?? 'postgres',
           expression.predicate.operator,

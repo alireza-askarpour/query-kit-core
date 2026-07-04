@@ -41,7 +41,13 @@ export function supportsSqlOperator(
   dialect: SqlDialect,
   operator: SqlOperator,
 ): boolean {
-  return SQL_DIALECT_OPERATOR_SUPPORT[operator].includes(dialect);
+  const supportedDialects = SQL_DIALECT_OPERATOR_SUPPORT[operator];
+
+  if (!supportedDialects) {
+    return false;
+  }
+
+  return supportedDialects.includes(dialect);
 }
 
 export function assertSqlOperatorSupport(
