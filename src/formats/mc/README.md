@@ -45,4 +45,8 @@ status:$eq:active;@groupBy:status;@aggregate:count(*):total,sum(amount):totalAmo
 - allowed operators per field type
 - nested field rules
 - JSON object payloads for `elemMatch`
+- field whitelist / blacklist
+- per-field transformers
+- per-field and global validator hooks
+- role-based field access
 - dangerous payload patterns such as `$where`

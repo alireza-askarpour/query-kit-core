@@ -2,6 +2,13 @@ import {
   FilterValidationIssue,
   FilterValidationResult,
 } from '../../core';
+import {
+  RoleAccessPolicy,
+  RoleFieldAccessPolicy,
+  ValidationContext,
+  ValidationHook,
+  ValueTransformer,
+} from '../validation-policy.utils';
 
 export interface MongoFieldSchema {
   type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object';
@@ -14,10 +21,18 @@ export interface MongoFieldSchema {
   maxLength?: number;
   pattern?: RegExp;
   nestedFields?: Record<string, MongoFieldSchema>;
+  transform?: ValueTransformer<MongoFieldSchema>;
+  validate?: ValidationHook<MongoFieldSchema>;
+  access?: RoleAccessPolicy;
 }
 
 export interface MongoValidationOptions {
   allowedFields?: Record<string, MongoFieldSchema>;
+  fieldWhitelist?: string[];
+  fieldBlacklist?: string[];
+  roleFieldAccess?: Record<string, RoleFieldAccessPolicy>;
+  validationContext?: ValidationContext;
+  customValidator?: ValidationHook<MongoFieldSchema>;
   maxConditions?: number;
   maxValueLength?: number;
   allowNestedFields?: boolean;

@@ -2,6 +2,13 @@ import {
   FilterValidationIssue,
   FilterValidationResult,
 } from '../../core';
+import {
+  RoleAccessPolicy,
+  RoleFieldAccessPolicy,
+  ValidationContext,
+  ValidationHook,
+  ValueTransformer,
+} from '../validation-policy.utils';
 
 export interface FieldSchema {
   type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object';
@@ -15,10 +22,18 @@ export interface FieldSchema {
   pattern?: RegExp;
   nestedFields?: Record<string, FieldSchema>;
   relations?: string[];
+  transform?: ValueTransformer<FieldSchema>;
+  validate?: ValidationHook<FieldSchema>;
+  access?: RoleAccessPolicy;
 }
 
 export interface ValidationOptions {
   allowedFields?: Record<string, FieldSchema>;
+  fieldWhitelist?: string[];
+  fieldBlacklist?: string[];
+  roleFieldAccess?: Record<string, RoleFieldAccessPolicy>;
+  validationContext?: ValidationContext;
+  customValidator?: ValidationHook<FieldSchema>;
   maxConditions?: number;
   maxValueLength?: number;
   allowNestedFields?: boolean;

@@ -174,6 +174,16 @@ Current normalized operators:
 - `date`, `year`, `month`, `day`
 - `elemMatch`
 
+## Validation upgrades
+
+Built-in validators now support stronger schema-driven policies:
+
+- field whitelist / blacklist
+- per-field transformer
+- per-field validator hook
+- global custom validator hook
+- role-based field access
+
 ## Development scripts
 
 - `pnpm build`

@@ -127,7 +127,11 @@ export class FilterProcessor {
       return;
     }
 
-    const result = validator.validate(queryString, pipeline?.schema);
+    const result = validator.validate(
+      queryString,
+      pipeline?.schema,
+      pipeline?.validationContext,
+    );
 
     if (!result.isValid) {
       throw new BadRequestException({

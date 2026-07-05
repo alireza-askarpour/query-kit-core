@@ -20,6 +20,13 @@ import {
   parseAggregationDirective,
   parseGroupByDirective,
 } from '../aggregation-directive.utils';
+import {
+  resolveValidationContext,
+  runValidationHook,
+  validateFieldAgainstLists,
+  validateFieldRoleAccess,
+  ValidationContext,
+} from '../validation-policy.utils';
 import type {
   ConditionValidationResult,
   FieldSchema,
@@ -60,9 +67,15 @@ export class SCFormatValidator
   validate(
     queryString: string,
     schema?: Record<string, FieldSchema>,
+    context?: ValidationContext,
   ): ValidationResult {
     const errors: ValidationError[] = [];
     const warnings: ValidationError[] = [];
+    const validationContext = resolveValidationContext(
+      this.options.validationContext,
+      context,
+    );
+    const effectiveSchema = this.resolveSchema(schema);
 
     if (!queryString || queryString.trim() === '') {
       return this.createEmptyResult();
@@ -74,7 +87,8 @@ export class SCFormatValidator
     });
     const aggregationValidation = this.validateAggregationDirectives(
       queryString,
-      schema,
+      effectiveSchema,
+      validationContext,
     );
     errors.push(...aggregationValidation.errors);
     warnings.push(...aggregationValidation.warnings);
@@ -93,7 +107,12 @@ export class SCFormatValidator
     const sanitizedConditions: SanitizedCondition[] = [];
 
     conditions.forEach((condition, index) => {
-      const result = this.validateCondition(condition, schema, index);
+      const result = this.validateCondition(
+        condition,
+        effectiveSchema,
+        index,
+        validationContext,
+      );
       errors.push(...result.errors);
       warnings.push(...result.warnings);
 
@@ -114,13 +133,14 @@ export class SCFormatValidator
   validateAndSanitize(
     queryString: string,
     schema?: Record<string, FieldSchema>,
+    context?: ValidationContext,
   ): {
     valid: boolean;
     conditions: SanitizedCondition[];
     errors: ValidationError[];
     warnings: ValidationError[];
   } {
-    const result = this.validate(queryString, schema);
+    const result = this.validate(queryString, schema, context);
     return {
       valid: result.isValid,
       conditions: result.sanitizedConditions,
@@ -133,6 +153,7 @@ export class SCFormatValidator
     condition: ParsedCondition,
     schema: Record<string, FieldSchema> | undefined,
     index: number,
+    context?: ValidationContext,
   ): ConditionValidationResult {
     const errors: ValidationError[] = [];
     const warnings: ValidationError[] = [];
@@ -148,8 +169,25 @@ export class SCFormatValidator
     }
 
     const { field, operator, rawValue } = condition;
+    const fieldSchema = schema?.[field];
 
-    if (schema && !schema[field] && this.options.strictMode) {
+    errors.push(
+      ...validateFieldAgainstLists(
+        field,
+        this.options.fieldWhitelist,
+        this.options.fieldBlacklist,
+      ) as ValidationError[],
+    );
+    errors.push(
+      ...validateFieldRoleAccess(
+        field,
+        context,
+        fieldSchema?.access,
+        this.options.roleFieldAccess,
+      ) as ValidationError[],
+    );
+
+    if (schema && !fieldSchema && this.options.strictMode) {
       errors.push({
         field,
         message: `Field '${field}' is not allowed in schema`,
@@ -181,7 +219,6 @@ export class SCFormatValidator
       }
     }
 
-    const fieldSchema = schema?.[field];
     const allowedOperators =
       fieldSchema?.allowedOperators ||
       getAllowedOperatorsForType(fieldSchema?.type);
@@ -203,11 +240,23 @@ export class SCFormatValidator
     }
 
     let parsedValue: unknown;
+    let transformedValue = false;
     try {
       parsedValue = parseValueByOperator(rawValue, operator, fieldSchema, {
         normalizeOperator: this.normalizeOperator.bind(this),
         validateDateFormat,
       });
+      if (fieldSchema?.transform) {
+        transformedValue = true;
+        parsedValue = fieldSchema.transform({
+          field,
+          operator,
+          rawValue,
+          value: parsedValue,
+          schema: fieldSchema,
+          context,
+        });
+      }
       (sanitized as ParsedConditionInput).value = parsedValue;
     } catch (error) {
       errors.push({
@@ -215,7 +264,7 @@ export class SCFormatValidator
         operator,
         value: rawValue,
         message: error instanceof Error ? error.message : String(error),
-        code: 'VALUE_PARSE_ERROR',
+        code: transformedValue ? 'VALUE_TRANSFORM_ERROR' : 'VALUE_PARSE_ERROR',
       });
     }
 
@@ -254,6 +303,30 @@ export class SCFormatValidator
       });
     }
 
+    if (parsedValue !== undefined) {
+      const fieldHookResult = runValidationHook(fieldSchema?.validate, {
+        field,
+        operator,
+        rawValue,
+        value: parsedValue,
+        schema: fieldSchema,
+        context,
+      });
+      errors.push(...(fieldHookResult.errors as ValidationError[]));
+      warnings.push(...(fieldHookResult.warnings as ValidationError[]));
+
+      const customHookResult = runValidationHook(this.options.customValidator, {
+        field,
+        operator,
+        rawValue,
+        value: parsedValue,
+        schema: fieldSchema,
+        context,
+      });
+      errors.push(...(customHookResult.errors as ValidationError[]));
+      warnings.push(...(customHookResult.warnings as ValidationError[]));
+    }
+
     return {
       isValid: errors.length === 0,
       errors,
@@ -269,6 +342,7 @@ export class SCFormatValidator
   private validateAggregationDirectives(
     queryString: string,
     schema?: Record<string, FieldSchema>,
+    context?: ValidationContext,
   ): {
     errors: ValidationError[];
     warnings: ValidationError[];
@@ -332,12 +406,12 @@ export class SCFormatValidator
     });
 
     groupByFields.forEach((field) => {
-      this.validateAggregationFieldReference(field, schema, errors);
+      this.validateAggregationFieldReference(field, schema, errors, context);
     });
 
     metrics.forEach((metric) => {
       if (metric.field) {
-        this.validateAggregationFieldReference(metric.field, schema, errors);
+        this.validateAggregationFieldReference(metric.field, schema, errors, context);
       }
 
       const fieldSchema = metric.field ? schema?.[metric.field] : undefined;
@@ -359,7 +433,7 @@ export class SCFormatValidator
 
     rawHavingConditions.forEach((rawHaving, index) => {
       const parsed = this.parseDirectiveCondition(rawHaving);
-      const result = this.validateCondition(parsed, havingSchema, index);
+      const result = this.validateCondition(parsed, havingSchema, index, context);
       errors.push(...result.errors);
       warnings.push(...result.warnings);
     });
@@ -375,8 +449,27 @@ export class SCFormatValidator
     field: string,
     schema: Record<string, FieldSchema> | undefined,
     errors: ValidationError[],
+    context?: ValidationContext,
   ): void {
-    if (schema && !schema[field] && this.options.strictMode) {
+    const fieldSchema = schema?.[field];
+
+    errors.push(
+      ...validateFieldAgainstLists(
+        field,
+        this.options.fieldWhitelist,
+        this.options.fieldBlacklist,
+      ) as ValidationError[],
+    );
+    errors.push(
+      ...validateFieldRoleAccess(
+        field,
+        context,
+        fieldSchema?.access,
+        this.options.roleFieldAccess,
+      ) as ValidationError[],
+    );
+
+    if (schema && !fieldSchema && this.options.strictMode) {
       errors.push({
         field,
         message: `Field '${field}' is not allowed in schema`,
@@ -486,5 +579,18 @@ export class SCFormatValidator
     condition: ParsedCondition,
   ): condition is SanitizedCondition {
     return 'field' in condition && 'rawValue' in condition && 'operator' in condition;
+  }
+
+  private resolveSchema(
+    schema?: Record<string, FieldSchema>,
+  ): Record<string, FieldSchema> | undefined {
+    if (!this.options.allowedFields) {
+      return schema;
+    }
+
+    return {
+      ...this.options.allowedFields,
+      ...(schema ?? {}),
+    };
   }
 }

@@ -31,8 +31,8 @@ class PassingValidator {
     this.calls = [];
   }
 
-  validate(queryString, schema) {
-    this.calls.push({ queryString, schema });
+  validate(queryString, schema, context) {
+    this.calls.push({ queryString, schema, context });
     return {
       isValid: true,
       errors: [],
@@ -142,6 +142,7 @@ test('processWith validates when enabled and validator exists', () => {
     {
       queryString: 'status:eq:active',
       schema: { status: { type: 'string' } },
+      context: undefined,
     },
   ]);
 });
@@ -230,6 +231,27 @@ test('processWith can disable validation per request', () => {
   });
 
   assert.equal(validator.calls.length, 0);
+});
+
+test('processWith passes validation context to validator', () => {
+  const validator = new PassingValidator();
+  const { registry } = createRegistry({ validator });
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    enableValidation: true,
+  });
+
+  processor.processWith({
+    query: 'status:eq:active',
+    pipeline: {
+      validationContext: {
+        role: 'admin',
+      },
+    },
+  });
+
+  assert.deepEqual(validator.calls[0].context, { role: 'admin' });
 });
 
 test('processWith fails fast when format capabilities reject regex usage', () => {

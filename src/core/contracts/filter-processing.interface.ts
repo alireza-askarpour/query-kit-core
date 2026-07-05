@@ -1,19 +1,24 @@
 import { Query } from './filter-format.interface';
 
-export interface FilterPipelineOptions<TSchema = unknown> {
+export interface FilterPipelineOptions<
+  TSchema = unknown,
+  TValidationContext = unknown,
+> {
   validate?: boolean;
   schema?: TSchema;
+  validationContext?: TValidationContext;
 }
 
 export interface FilterProcessRequest<
   TAdapterOptions = unknown,
   TSchema = unknown,
+  TValidationContext = unknown,
 > {
   query: string | Query;
   formatName?: string;
   ormName?: string;
   adapterOptions?: TAdapterOptions;
-  pipeline?: FilterPipelineOptions<TSchema>;
+  pipeline?: FilterPipelineOptions<TSchema, TValidationContext>;
 }
 
 export interface FilterRuntimeOptions {
@@ -21,4 +26,3 @@ export interface FilterRuntimeOptions {
   defaultOrm?: string;
   enableValidation?: boolean;
 }
-

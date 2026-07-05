@@ -21,6 +21,13 @@ import {
   parseAggregationDirective,
   parseGroupByDirective,
 } from '../aggregation-directive.utils';
+import {
+  resolveValidationContext,
+  runValidationHook,
+  validateFieldAgainstLists,
+  validateFieldRoleAccess,
+  ValidationContext,
+} from '../validation-policy.utils';
 import type {
   MongoConditionValidationResult,
   MongoFieldSchema,
@@ -61,9 +68,15 @@ export class MCFormatValidator
   validate(
     queryString: string,
     schema?: Record<string, MongoFieldSchema>,
+    context?: ValidationContext,
   ): MongoValidationResult {
     const errors: MongoValidationError[] = [];
     const warnings: MongoValidationError[] = [];
+    const validationContext = resolveValidationContext(
+      this.options.validationContext,
+      context,
+    );
+    const effectiveSchema = this.resolveSchema(schema);
 
     if (!queryString || queryString.trim() === '') {
       return this.createEmptyResult();
@@ -76,7 +89,8 @@ export class MCFormatValidator
     });
     const aggregationValidation = this.validateAggregationDirectives(
       queryString,
-      schema,
+      effectiveSchema,
+      validationContext,
     );
     errors.push(...aggregationValidation.errors);
     warnings.push(...aggregationValidation.warnings);
@@ -95,7 +109,12 @@ export class MCFormatValidator
     const sanitizedConditions: MongoSanitizedCondition[] = [];
 
     conditions.forEach((condition, index) => {
-      const result = this.validateCondition(condition, schema, index);
+      const result = this.validateCondition(
+        condition,
+        effectiveSchema,
+        index,
+        validationContext,
+      );
       errors.push(...result.errors);
       warnings.push(...result.warnings);
 
@@ -117,6 +136,7 @@ export class MCFormatValidator
     condition: MongoParsedCondition,
     schema: Record<string, MongoFieldSchema> | undefined,
     index: number,
+    context?: ValidationContext,
   ): MongoConditionValidationResult {
     const errors: MongoValidationError[] = [];
     const warnings: MongoValidationError[] = [];
@@ -132,8 +152,25 @@ export class MCFormatValidator
     }
 
     const { field, operator, rawValue } = condition;
+    const fieldSchema = schema?.[field];
 
-    if (schema && !schema[field] && this.options.strictMode) {
+    errors.push(
+      ...validateFieldAgainstLists(
+        field,
+        this.options.fieldWhitelist,
+        this.options.fieldBlacklist,
+      ) as MongoValidationError[],
+    );
+    errors.push(
+      ...validateFieldRoleAccess(
+        field,
+        context,
+        fieldSchema?.access,
+        this.options.roleFieldAccess,
+      ) as MongoValidationError[],
+    );
+
+    if (schema && !fieldSchema && this.options.strictMode) {
       errors.push({
         field,
         message: `Field '${field}' is not allowed in schema`,
@@ -157,7 +194,6 @@ export class MCFormatValidator
       }
     }
 
-    const fieldSchema = schema?.[field];
     const allowedOperators =
       fieldSchema?.allowedOperators ||
       getAllowedMongoOperatorsForType(fieldSchema?.type);
@@ -179,12 +215,24 @@ export class MCFormatValidator
     }
 
     let parsedValue: unknown;
+    let transformedValue = false;
     try {
       parsedValue = parseMongoValueByOperator(rawValue, operator, fieldSchema, {
         normalizeOperator: this.normalizeOperator.bind(this),
         validateDateFormat: validateMongoDateFormat,
         parseObjectLiteral: this.parseObjectLiteral.bind(this),
       });
+      if (fieldSchema?.transform) {
+        transformedValue = true;
+        parsedValue = fieldSchema.transform({
+          field,
+          operator,
+          rawValue,
+          value: parsedValue,
+          schema: fieldSchema,
+          context,
+        });
+      }
       (sanitized as MongoParsedConditionInput).value = parsedValue;
     } catch (error) {
       errors.push({
@@ -192,7 +240,7 @@ export class MCFormatValidator
         operator,
         value: rawValue,
         message: error instanceof Error ? error.message : String(error),
-        code: 'VALUE_PARSE_ERROR',
+        code: transformedValue ? 'VALUE_TRANSFORM_ERROR' : 'VALUE_PARSE_ERROR',
       });
     }
 
@@ -231,6 +279,30 @@ export class MCFormatValidator
       });
     }
 
+    if (parsedValue !== undefined) {
+      const fieldHookResult = runValidationHook(fieldSchema?.validate, {
+        field,
+        operator,
+        rawValue,
+        value: parsedValue,
+        schema: fieldSchema,
+        context,
+      });
+      errors.push(...(fieldHookResult.errors as MongoValidationError[]));
+      warnings.push(...(fieldHookResult.warnings as MongoValidationError[]));
+
+      const customHookResult = runValidationHook(this.options.customValidator, {
+        field,
+        operator,
+        rawValue,
+        value: parsedValue,
+        schema: fieldSchema,
+        context,
+      });
+      errors.push(...(customHookResult.errors as MongoValidationError[]));
+      warnings.push(...(customHookResult.warnings as MongoValidationError[]));
+    }
+
     return {
       isValid: errors.length === 0,
       errors,
@@ -247,6 +319,7 @@ export class MCFormatValidator
   private validateAggregationDirectives(
     queryString: string,
     schema?: Record<string, MongoFieldSchema>,
+    context?: ValidationContext,
   ): {
     errors: MongoValidationError[];
     warnings: MongoValidationError[];
@@ -300,12 +373,12 @@ export class MCFormatValidator
     });
 
     groupByFields.forEach((field) => {
-      this.validateAggregationFieldReference(field, schema, errors);
+      this.validateAggregationFieldReference(field, schema, errors, context);
     });
 
     metrics.forEach((metric) => {
       if (metric.field) {
-        this.validateAggregationFieldReference(metric.field, schema, errors);
+        this.validateAggregationFieldReference(metric.field, schema, errors, context);
       }
 
       const fieldSchema = metric.field ? schema?.[metric.field] : undefined;
@@ -327,7 +400,7 @@ export class MCFormatValidator
 
     rawHavingConditions.forEach((rawHaving, index) => {
       const parsed = this.parseDirectiveCondition(rawHaving);
-      const result = this.validateCondition(parsed, havingSchema, index);
+      const result = this.validateCondition(parsed, havingSchema, index, context);
       errors.push(...result.errors);
       warnings.push(...result.warnings);
     });
@@ -343,8 +416,27 @@ export class MCFormatValidator
     field: string,
     schema: Record<string, MongoFieldSchema> | undefined,
     errors: MongoValidationError[],
+    context?: ValidationContext,
   ): void {
-    if (schema && !schema[field] && this.options.strictMode) {
+    const fieldSchema = schema?.[field];
+
+    errors.push(
+      ...validateFieldAgainstLists(
+        field,
+        this.options.fieldWhitelist,
+        this.options.fieldBlacklist,
+      ) as MongoValidationError[],
+    );
+    errors.push(
+      ...validateFieldRoleAccess(
+        field,
+        context,
+        fieldSchema?.access,
+        this.options.roleFieldAccess,
+      ) as MongoValidationError[],
+    );
+
+    if (schema && !fieldSchema && this.options.strictMode) {
       errors.push({
         field,
         message: `Field '${field}' is not allowed in schema`,
@@ -474,5 +566,18 @@ export class MCFormatValidator
     condition: MongoParsedCondition,
   ): condition is MongoSanitizedCondition {
     return 'field' in condition && 'rawValue' in condition && 'operator' in condition;
+  }
+
+  private resolveSchema(
+    schema?: Record<string, MongoFieldSchema>,
+  ): Record<string, MongoFieldSchema> | undefined {
+    if (!this.options.allowedFields) {
+      return schema;
+    }
+
+    return {
+      ...this.options.allowedFields,
+      ...(schema ?? {}),
+    };
   }
 }

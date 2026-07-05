@@ -69,3 +69,63 @@ test('mc validator validates aggregation directives and having aliases', () => {
 
   assert.equal(result.isValid, true);
 });
+
+test('mc validator enforces field whitelist and blacklist', () => {
+  const validator = new MCFormatValidator({
+    fieldWhitelist: ['status', 'profile'],
+    fieldBlacklist: ['profile.secret'],
+  });
+
+  const result = validator.validate(
+    'status:$eq:active;profile.name:$eq:john;profile.secret:$eq:x;price:$eq:10',
+  );
+
+  assert.equal(result.isValid, false);
+  assert.ok(result.errors.some((item) => item.code === 'FIELD_BLACKLISTED'));
+  assert.ok(result.errors.some((item) => item.code === 'FIELD_NOT_WHITELISTED'));
+});
+
+test('mc validator applies per-field transformer and custom hook', () => {
+  const validator = new MCFormatValidator({
+    customValidator: ({ field, value }) => {
+      if (field === 'status' && value === 'ACTIVE') {
+        return { code: 'STATUS_NORMALIZED', message: 'status normalized', level: 'warning' };
+      }
+    },
+  });
+
+  const result = validator.validate('status:$eq:active', {
+    status: {
+      type: 'string',
+      enum: ['ACTIVE'],
+      transform: ({ value }) => String(value).toUpperCase(),
+    },
+  });
+
+  assert.equal(result.isValid, true);
+  assert.equal(result.sanitizedConditions[0].value, 'ACTIVE');
+  assert.ok(result.warnings.some((item) => item.code === 'STATUS_NORMALIZED'));
+});
+
+test('mc validator enforces role-based field access', () => {
+  const validator = new MCFormatValidator({
+    roleFieldAccess: {
+      user: {
+        allowFields: ['status'],
+      },
+    },
+  });
+
+  const result = validator.validate(
+    'status:$eq:active;salary:$eq:1000',
+    {
+      salary: { type: 'number', access: { allowRoles: ['admin'] } },
+      status: { type: 'string' },
+    },
+    { role: 'user' },
+  );
+
+  assert.equal(result.isValid, false);
+  assert.ok(result.errors.some((item) => item.field === 'salary'));
+  assert.ok(result.errors.some((item) => item.code === 'FIELD_ROLE_DENIED'));
+});

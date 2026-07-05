@@ -20,6 +20,6 @@ export interface FilterFormatValidator<TSchema = unknown, TSanitized = unknown> 
   validate(
     queryString: Query['filterString'],
     schema?: TSchema,
+    context?: unknown,
   ): FilterValidationResult<TSanitized>;
 }
-

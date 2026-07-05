@@ -80,6 +80,10 @@ The SC format is intentionally split into focused modules:
 - validate operator availability
 - validate value types
 - validate schema-based constraints
+- enforce field whitelist / blacklist
+- apply per-field transformers
+- run per-field and global validator hooks
+- enforce role-based field access
 - perform lightweight security checks
 
 ## Extension notes
