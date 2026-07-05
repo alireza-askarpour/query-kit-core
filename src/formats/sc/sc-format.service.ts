@@ -4,6 +4,7 @@ import {
   createNotNode,
   createPredicateNode,
   createFilterIR,
+  FilterValidationIssue,
   FilterFormat,
   FilterExpressionNode,
   FilterOperator,
@@ -12,6 +13,10 @@ import {
   NormalizedCondition,
   NormalizedSort,
   Query,
+} from '../../core';
+import {
+  getDefaultFilterOperatorRegistry,
+  normalizeOperatorValidationOutcome,
 } from '../../core';
 import {
   parseRawLogicalExpression,
@@ -131,6 +136,8 @@ export class SCFormat implements FilterFormat {
     'month',
     'day',
   ];
+
+  private readonly formatName = 'scfilter';
 
   public parse(query: Query) {
     const filterString = query.filterString?.trim() ?? '';
@@ -344,9 +351,9 @@ export class SCFormat implements FilterFormat {
     },
     aggregationMetrics: import('../../core').AggregationExpression[],
   ): void {
-    const [directiveName, rawValue = ''] = this.splitByUnescapedColon(segment);
+    const [directiveName, ...rawValueParts] = this.splitByUnescapedColon(segment);
     const name = directiveName.slice(1).trim().toLowerCase();
-    const value = rawValue.trim();
+    const value = rawValueParts.join(':').trim();
 
     switch (name) {
       case 'sort':
@@ -429,10 +436,11 @@ export class SCFormat implements FilterFormat {
     }
 
     const operator = this.normalizeOperator(rawOperator.trim());
-    const value = this.parseValue(rawValue.join(':').trim(), operator);
+    const resolvedField = this.unescapeSegment(field.trim());
+    const value = this.parseValue(rawValue.join(':').trim(), operator, resolvedField);
 
     return {
-      field: this.unescapeSegment(field.trim()),
+      field: resolvedField,
       operator,
       value,
     };
@@ -526,7 +534,7 @@ export class SCFormat implements FilterFormat {
     const when: NormalizedCondition = {
       field,
       operator,
-      value: this.parseValue(rawValue, operator),
+      value: this.parseValue(rawValue, operator, field),
     };
 
     this.validateCondition(when);
@@ -537,8 +545,32 @@ export class SCFormat implements FilterFormat {
     };
   }
 
-  private parseValue(rawValue: string, operator: FilterOperator): unknown {
+  private parseValue(
+    rawValue: string,
+    operator: FilterOperator,
+    field = '',
+  ): unknown {
     const value = this.unescapeSegment(rawValue.trim());
+    const plugin = getDefaultFilterOperatorRegistry().getFormatOperator(
+      this.formatName,
+      operator,
+    );
+
+    if (plugin?.parseValue) {
+      return plugin.parseValue(value, {
+        formatName: this.formatName,
+        field,
+        operator,
+        rawValue: value,
+        parseList: this.parseCommaSeparatedList.bind(this),
+        parseInteger: (input, label, allowZero = false) =>
+          allowZero
+            ? this.parseNonNegativeInteger(input, label)
+            : this.parsePositiveInteger(input, label),
+        parseBoolean: this.parseBoolean.bind(this),
+        parsePrimitive: this.parsePrimitive.bind(this),
+      });
+    }
 
     if (this.arrayOperators.includes(operator)) {
       return this.parseCommaSeparatedList(value, operator).map((item) =>
@@ -658,8 +690,26 @@ export class SCFormat implements FilterFormat {
 
   private validateCondition(condition: NormalizedCondition): void {
     const { field, operator, value } = condition;
+    const plugin = getDefaultFilterOperatorRegistry().getFormatOperator(
+      this.formatName,
+      operator,
+    );
 
     this.validateOperator(field, operator);
+
+    if (plugin?.validate) {
+      const outcome = normalizeOperatorValidationOutcome(
+        plugin.validate({
+          formatName: this.formatName,
+          field,
+          operator,
+          rawValue: String(value ?? ''),
+          value,
+        }),
+        { field, operator, value },
+      );
+      this.throwValidationIssues(outcome.errors);
+    }
 
     if (operator === 'between') {
       this.validateBetween(field, value);
@@ -685,7 +735,10 @@ export class SCFormat implements FilterFormat {
   }
 
   private validateOperator(field: string, operator: FilterOperator): void {
-    if (!this.validOperators.has(operator)) {
+    if (
+      !this.validOperators.has(operator) &&
+      !getDefaultFilterOperatorRegistry().getFormatOperator(this.formatName, operator)
+    ) {
       throw new BadRequestException(
         `Invalid operator "${operator}" for field "${field}"`,
       );
@@ -871,7 +924,12 @@ export class SCFormat implements FilterFormat {
   }
 
   private normalizeOperator(operator: string): FilterOperator {
-    const normalized = this.operatorAliases[operator.toLowerCase()];
+    const normalized =
+      this.operatorAliases[operator.toLowerCase()] ??
+      getDefaultFilterOperatorRegistry().resolveFormatOperatorName(
+        this.formatName,
+        operator,
+      );
 
     if (!normalized) {
       throw new BadRequestException(`Invalid operator "${operator}"`);
@@ -884,5 +942,13 @@ export class SCFormat implements FilterFormat {
     throw new BadRequestException(
       `Unhandled raw expression node: ${JSON.stringify(expression)}`,
     );
+  }
+
+  private throwValidationIssues(issues: FilterValidationIssue[] | undefined): void {
+    if (!issues?.length) {
+      return;
+    }
+
+    throw new BadRequestException(issues[0].message);
   }
 }

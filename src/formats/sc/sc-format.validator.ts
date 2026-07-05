@@ -1,5 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { FilterFormatValidator } from '../../core';
+import {
+  FilterFormatValidator,
+  getDefaultFilterOperatorRegistry,
+  normalizeOperatorValidationOutcome,
+} from '../../core';
 import {
   DEFAULT_VALIDATION_OPTIONS,
   OPERATOR_ALIASES,
@@ -220,14 +224,13 @@ export class SCFormatValidator
     }
 
     const allowedOperators =
-      fieldSchema?.allowedOperators ||
-      getAllowedOperatorsForType(fieldSchema?.type);
+      fieldSchema?.allowedOperators || this.getAllowedOperators(fieldSchema?.type);
 
-    if (!isValidOperator(operator)) {
+    if (!this.isSupportedOperator(operator)) {
       errors.push({
         field,
         operator,
-        message: `Invalid operator '${operator}'. Valid operators: ${getValidOperatorsList()}`,
+        message: `Invalid operator '${operator}'. Valid operators: ${this.getValidOperatorsList()}`,
         code: 'INVALID_OPERATOR',
       });
     } else if (allowedOperators && !allowedOperators.includes(operator)) {
@@ -242,10 +245,13 @@ export class SCFormatValidator
     let parsedValue: unknown;
     let transformedValue = false;
     try {
-      parsedValue = parseValueByOperator(rawValue, operator, fieldSchema, {
-        normalizeOperator: this.normalizeOperator.bind(this),
-        validateDateFormat,
-      });
+      parsedValue = this.parseOperatorValue(
+        rawValue,
+        operator,
+        field,
+        fieldSchema,
+        context,
+      );
       if (fieldSchema?.transform) {
         transformedValue = true;
         parsedValue = fieldSchema.transform({
@@ -304,6 +310,17 @@ export class SCFormatValidator
     }
 
     if (parsedValue !== undefined) {
+      const pluginValidation = this.validateCustomOperator(
+        field,
+        operator,
+        rawValue,
+        parsedValue,
+        fieldSchema,
+        context,
+      );
+      errors.push(...pluginValidation.errors);
+      warnings.push(...pluginValidation.warnings);
+
       const fieldHookResult = runValidationHook(fieldSchema?.validate, {
         field,
         operator,
@@ -336,7 +353,14 @@ export class SCFormatValidator
   }
 
   private normalizeOperator(operator: string): string {
-    return OPERATOR_ALIASES[operator.toLowerCase()] ?? operator;
+    return (
+      OPERATOR_ALIASES[operator.toLowerCase()] ??
+      getDefaultFilterOperatorRegistry().resolveFormatOperatorName(
+        this.formatName,
+        operator,
+      ) ??
+      operator
+    );
   }
 
   private validateAggregationDirectives(
@@ -591,6 +615,140 @@ export class SCFormatValidator
     return {
       ...this.options.allowedFields,
       ...(schema ?? {}),
+    };
+  }
+
+  private isSupportedOperator(operator: string): boolean {
+    return (
+      isValidOperator(operator) ||
+      Boolean(
+        getDefaultFilterOperatorRegistry().getFormatOperator(
+          this.formatName,
+          operator,
+        ),
+      )
+    );
+  }
+
+  private getValidOperatorsList(): string {
+    const customOperators = getDefaultFilterOperatorRegistry()
+      .listFormatOperators(this.formatName)
+      .map((plugin) => plugin.operator);
+
+    return [...new Set([...getValidOperatorsList().split(', '), ...customOperators])].join(
+      ', ',
+    );
+  }
+
+  private getAllowedOperators(type?: string): string[] {
+    const defaultOperators = getAllowedOperatorsForType(type);
+    const customOperators = getDefaultFilterOperatorRegistry()
+      .listFormatOperators(this.formatName)
+      .filter(
+        (plugin) =>
+          !plugin.supportedFieldTypes?.length ||
+          !type ||
+          plugin.supportedFieldTypes.includes(type),
+      )
+      .map((plugin) => plugin.operator);
+
+    return [...new Set([...defaultOperators, ...customOperators])];
+  }
+
+  private parseOperatorValue(
+    rawValue: string,
+    operator: string,
+    field: string,
+    fieldSchema: FieldSchema | undefined,
+    context?: ValidationContext,
+  ): unknown {
+    const plugin = getDefaultFilterOperatorRegistry().getFormatOperator(
+      this.formatName,
+      operator,
+    );
+
+    if (plugin?.parseValue) {
+      return plugin.parseValue(rawValue, {
+        formatName: this.formatName,
+        field,
+        operator,
+        rawValue,
+        fieldSchema,
+        validationContext: context,
+        parseList: this.parseDirectiveList,
+        parseInteger: (value: string, label: string, allowZero = false) => {
+          const parsed = Number(value);
+
+          if (!Number.isInteger(parsed) || (!allowZero && parsed <= 0) || parsed < 0) {
+            throw new Error(`${label} requires a valid integer`);
+          }
+
+          return parsed;
+        },
+        parseBoolean: (value: string, label: string) => {
+          const normalized = value.trim().toLowerCase();
+
+          if (normalized === 'true') return true;
+          if (normalized === 'false') return false;
+
+          throw new Error(`${label} requires "true" or "false"`);
+        },
+        parsePrimitive: (value: string) => {
+          const normalized = value.toLowerCase();
+          if (normalized === 'true') return true;
+          if (normalized === 'false') return false;
+          if (normalized === 'null') return null;
+
+          const numericValue = Number(value);
+          if (value !== '' && !Number.isNaN(numericValue) && /^-?\d+(\.\d+)?$/.test(value)) {
+            return numericValue;
+          }
+
+          return value;
+        },
+        validateDateFormat,
+      });
+    }
+
+    return parseValueByOperator(rawValue, operator, fieldSchema, {
+      normalizeOperator: this.normalizeOperator.bind(this),
+      validateDateFormat,
+    });
+  }
+
+  private validateCustomOperator(
+    field: string,
+    operator: string,
+    rawValue: string,
+    value: unknown,
+    fieldSchema: FieldSchema | undefined,
+    context?: ValidationContext,
+  ): { errors: ValidationError[]; warnings: ValidationError[] } {
+    const plugin = getDefaultFilterOperatorRegistry().getFormatOperator(
+      this.formatName,
+      operator,
+    );
+
+    if (!plugin?.validate) {
+      return { errors: [], warnings: [] };
+    }
+
+    const result = normalizeOperatorValidationOutcome(
+      plugin.validate({
+        formatName: this.formatName,
+        field,
+        operator,
+        rawValue,
+        value,
+        fieldSchema,
+        validationContext: context,
+      }),
+      { field, operator, value },
+    );
+
+    return {
+      errors: (result.errors ?? []) as ValidationError[],
+      warnings: (result.warnings ?? []) as ValidationError[],
     };
   }
 }

@@ -184,6 +184,47 @@ Built-in validators now support stronger schema-driven policies:
 - global custom validator hook
 - role-based field access
 
+## Custom operator plugins
+
+You can add new operators without changing the package core by registering format and adapter plugins in the global operator registry.
+
+```ts
+import {
+  registerFilterOperatorBundle,
+  registerAdapterOperator,
+} from 'query-request';
+
+registerFilterOperatorBundle({
+  operator: 'jsonContains',
+  formats: {
+    scfilter: {
+      aliases: ['jsoncontains'],
+      supportedFieldTypes: ['object'],
+      parseValue: (rawValue) => JSON.parse(rawValue),
+    },
+  },
+  adapters: {
+    typeorm: {
+      apply: ({ field, value, parameterName }) => ({
+        condition: `${field} @> :${parameterName}`,
+        parameters: { [parameterName]: JSON.stringify(value) },
+      }),
+    },
+  },
+});
+
+registerAdapterOperator('mongoose', {
+  operator: 'geoWithin',
+  apply: ({ value }) => ({ $geoWithin: value }),
+});
+```
+
+Useful extension scenarios:
+
+- `geoWithin`
+- `fullText`
+- `jsonContains`
+
 ## Development scripts
 
 - `pnpm build`

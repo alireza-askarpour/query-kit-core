@@ -1,8 +1,8 @@
-import { NormalizedCondition } from '../core';
+import { BuiltinFilterOperator } from '../core';
 
 export type SqlDialect = 'postgres' | 'mysql' | 'sqlite';
 
-export type SqlOperator = NormalizedCondition['operator'];
+export type SqlOperator = BuiltinFilterOperator;
 
 type SqlCapabilityMatrix = Record<SqlOperator, readonly SqlDialect[]>;
 
@@ -48,6 +48,10 @@ export function supportsSqlOperator(
   }
 
   return supportedDialects.includes(dialect);
+}
+
+export function isBuiltinSqlOperator(operator: string): operator is SqlOperator {
+  return operator in SQL_DIALECT_OPERATOR_SUPPORT;
 }
 
 export function assertSqlOperatorSupport(

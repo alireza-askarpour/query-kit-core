@@ -1,5 +1,9 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { FilterFormatValidator } from '../../core';
+import {
+  FilterFormatValidator,
+  getDefaultFilterOperatorRegistry,
+  normalizeOperatorValidationOutcome,
+} from '../../core';
 import {
   DEFAULT_MC_VALIDATION_OPTIONS,
   MC_OPERATOR_ALIASES,
@@ -195,14 +199,13 @@ export class MCFormatValidator
     }
 
     const allowedOperators =
-      fieldSchema?.allowedOperators ||
-      getAllowedMongoOperatorsForType(fieldSchema?.type);
+      fieldSchema?.allowedOperators || this.getAllowedOperators(fieldSchema?.type);
 
-    if (!isValidMongoOperator(operator)) {
+    if (!this.isSupportedOperator(operator)) {
       errors.push({
         field,
         operator,
-        message: `Invalid operator '${operator}'. Valid operators: ${getMongoValidOperatorsList()}`,
+        message: `Invalid operator '${operator}'. Valid operators: ${this.getValidOperatorsList()}`,
         code: 'INVALID_OPERATOR',
       });
     } else if (allowedOperators && !allowedOperators.includes(operator)) {
@@ -217,11 +220,13 @@ export class MCFormatValidator
     let parsedValue: unknown;
     let transformedValue = false;
     try {
-      parsedValue = parseMongoValueByOperator(rawValue, operator, fieldSchema, {
-        normalizeOperator: this.normalizeOperator.bind(this),
-        validateDateFormat: validateMongoDateFormat,
-        parseObjectLiteral: this.parseObjectLiteral.bind(this),
-      });
+      parsedValue = this.parseOperatorValue(
+        rawValue,
+        operator,
+        field,
+        fieldSchema,
+        context,
+      );
       if (fieldSchema?.transform) {
         transformedValue = true;
         parsedValue = fieldSchema.transform({
@@ -280,6 +285,17 @@ export class MCFormatValidator
     }
 
     if (parsedValue !== undefined) {
+      const pluginValidation = this.validateCustomOperator(
+        field,
+        operator,
+        rawValue,
+        parsedValue,
+        fieldSchema,
+        context,
+      );
+      errors.push(...pluginValidation.errors);
+      warnings.push(...pluginValidation.warnings);
+
       const fieldHookResult = runValidationHook(fieldSchema?.validate, {
         field,
         operator,
@@ -313,7 +329,14 @@ export class MCFormatValidator
 
   private normalizeOperator(operator: string): string {
     const normalized = operator.replace(/^\$/, '').toLowerCase();
-    return MC_OPERATOR_ALIASES[normalized] ?? operator;
+    return (
+      MC_OPERATOR_ALIASES[normalized] ??
+      getDefaultFilterOperatorRegistry().resolveFormatOperatorName(
+        this.formatName,
+        normalized,
+      ) ??
+      operator
+    );
   }
 
   private validateAggregationDirectives(
@@ -552,6 +575,18 @@ export class MCFormatValidator
     }
   }
 
+  private parsePrimitive(value: string): unknown {
+    const trimmed = value.trim();
+    const lowered = trimmed.toLowerCase();
+
+    if (lowered === 'true') return true;
+    if (lowered === 'false') return false;
+    if (lowered === 'null') return null;
+    if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
+
+    return trimmed;
+  }
+
   private createEmptyResult(): MongoValidationResult {
     return {
       isValid: true,
@@ -578,6 +613,130 @@ export class MCFormatValidator
     return {
       ...this.options.allowedFields,
       ...(schema ?? {}),
+    };
+  }
+
+  private isSupportedOperator(operator: string): boolean {
+    return (
+      isValidMongoOperator(operator) ||
+      Boolean(
+        getDefaultFilterOperatorRegistry().getFormatOperator(
+          this.formatName,
+          operator,
+        ),
+      )
+    );
+  }
+
+  private getValidOperatorsList(): string {
+    const customOperators = getDefaultFilterOperatorRegistry()
+      .listFormatOperators(this.formatName)
+      .map((plugin) => plugin.operator);
+
+    return [...new Set([...getMongoValidOperatorsList().split(', '), ...customOperators])].join(
+      ', ',
+    );
+  }
+
+  private getAllowedOperators(type?: string): string[] {
+    const defaultOperators = getAllowedMongoOperatorsForType(type);
+    const customOperators = getDefaultFilterOperatorRegistry()
+      .listFormatOperators(this.formatName)
+      .filter(
+        (plugin) =>
+          !plugin.supportedFieldTypes?.length ||
+          !type ||
+          plugin.supportedFieldTypes.includes(type),
+      )
+      .map((plugin) => plugin.operator);
+
+    return [...new Set([...defaultOperators, ...customOperators])];
+  }
+
+  private parseOperatorValue(
+    rawValue: string,
+    operator: string,
+    field: string,
+    fieldSchema: MongoFieldSchema | undefined,
+    context?: ValidationContext,
+  ): unknown {
+    const plugin = getDefaultFilterOperatorRegistry().getFormatOperator(
+      this.formatName,
+      operator,
+    );
+
+    if (plugin?.parseValue) {
+      return plugin.parseValue(rawValue, {
+        formatName: this.formatName,
+        field,
+        operator,
+        rawValue,
+        fieldSchema,
+        validationContext: context,
+        parseList: this.parseDirectiveList,
+        parseInteger: (value: string, label: string, allowZero = false) => {
+          const parsed = Number(value);
+
+          if (!Number.isInteger(parsed) || (!allowZero && parsed <= 0) || parsed < 0) {
+            throw new Error(`${label} requires a valid integer`);
+          }
+
+          return parsed;
+        },
+        parseBoolean: (value: string, label: string) => {
+          const normalized = value.trim().toLowerCase();
+
+          if (normalized === 'true') return true;
+          if (normalized === 'false') return false;
+
+          throw new Error(`${label} requires "true" or "false"`);
+        },
+        parsePrimitive: (value: string) => this.parsePrimitive(value),
+        parseObjectLiteral: this.parseObjectLiteral.bind(this),
+        validateDateFormat: validateMongoDateFormat,
+      });
+    }
+
+    return parseMongoValueByOperator(rawValue, operator, fieldSchema, {
+      normalizeOperator: this.normalizeOperator.bind(this),
+      validateDateFormat: validateMongoDateFormat,
+      parseObjectLiteral: this.parseObjectLiteral.bind(this),
+    });
+  }
+
+  private validateCustomOperator(
+    field: string,
+    operator: string,
+    rawValue: string,
+    value: unknown,
+    fieldSchema: MongoFieldSchema | undefined,
+    context?: ValidationContext,
+  ): { errors: MongoValidationError[]; warnings: MongoValidationError[] } {
+    const plugin = getDefaultFilterOperatorRegistry().getFormatOperator(
+      this.formatName,
+      operator,
+    );
+
+    if (!plugin?.validate) {
+      return { errors: [], warnings: [] };
+    }
+
+    const result = normalizeOperatorValidationOutcome(
+      plugin.validate({
+        formatName: this.formatName,
+        field,
+        operator,
+        rawValue,
+        value,
+        fieldSchema,
+        validationContext: context,
+      }),
+      { field, operator, value },
+    );
+
+    return {
+      errors: (result.errors ?? []) as MongoValidationError[],
+      warnings: (result.warnings ?? []) as MongoValidationError[],
     };
   }
 }

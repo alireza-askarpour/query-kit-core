@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AdapterOperatorPlugin,
   AggregateDefinition,
   AggregationExpression,
   FilterIR,
@@ -17,6 +18,7 @@ import {
   QueryAdapter,
   RelationDefinition,
 } from '../../core';
+import { getDefaultFilterOperatorRegistry } from '../../core';
 
 export interface MongoosePopulateDefinition {
   path: string;
@@ -60,6 +62,16 @@ export interface MongooseAdapterOptions<TResult = unknown> {
   maxLimit?: number;
 }
 
+export interface MongooseOperatorPluginContext<TResult = unknown> {
+  field: string;
+  operator: string;
+  value: unknown;
+  options: MongooseAdapterOptions<TResult>;
+}
+
+export interface MongooseCustomOperatorPlugin<TResult = unknown>
+  extends AdapterOperatorPlugin<MongooseOperatorPluginContext<TResult>, unknown> {}
+
 @Injectable()
 export class MongooseAdapter
   implements
@@ -98,8 +110,9 @@ export class MongooseAdapter
       ? this.buildExpressionFilter(
           getFilterExpression(normalized),
           options.fieldMap,
+          options,
         )
-      : this.buildFilter(getPredicates(normalized), options.fieldMap);
+      : this.buildFilter(getPredicates(normalized), options.fieldMap, options);
     const projection = this.buildProjection(
       getProjectionFields(normalized),
       options.fieldMap,
@@ -152,8 +165,9 @@ export class MongooseAdapter
       ? this.buildExpressionFilter(
           getFilterExpression(normalized),
           options.fieldMap,
+          options,
         )
-      : this.buildFilter(getPredicates(normalized), options.fieldMap);
+      : this.buildFilter(getPredicates(normalized), options.fieldMap, options);
 
     if (Object.keys(filter).length > 0) {
       pipeline.push({ $match: filter });
@@ -168,7 +182,7 @@ export class MongooseAdapter
 
     if (aggregation.having?.length) {
       pipeline.push({
-        $match: this.buildFilter(aggregation.having),
+        $match: this.buildFilter(aggregation.having, undefined, options),
       });
     }
 
@@ -260,10 +274,11 @@ export class MongooseAdapter
   private buildFilter(
     conditions: NormalizedCondition[],
     fieldMap?: Record<string, string>,
+    options?: MongooseAdapterOptions,
   ): Record<string, unknown> {
     return conditions.reduce<Record<string, unknown>>((accumulator, condition) => {
       const field = fieldMap?.[condition.field] ?? condition.field;
-      const nextValue = this.mapOperator(condition);
+      const nextValue = this.mapOperator(condition, options);
       const currentValue = accumulator[field];
 
       if (
@@ -288,6 +303,7 @@ export class MongooseAdapter
   private buildExpressionFilter(
     expression: FilterExpressionNode | undefined,
     fieldMap?: Record<string, string>,
+    options?: MongooseAdapterOptions,
   ): Record<string, unknown> {
     if (!expression) {
       return {};
@@ -295,15 +311,15 @@ export class MongooseAdapter
 
     switch (expression.kind) {
       case 'predicate':
-        return this.buildFilter([expression.predicate], fieldMap);
+        return this.buildFilter([expression.predicate], fieldMap, options);
       case 'not':
         return {
-          $nor: [this.buildExpressionFilter(expression.child, fieldMap)],
+          $nor: [this.buildExpressionFilter(expression.child, fieldMap, options)],
         };
       case 'group':
         return {
           [expression.operator === 'and' ? '$and' : '$or']: expression.children.map(
-            (child) => this.buildExpressionFilter(child, fieldMap),
+            (child) => this.buildExpressionFilter(child, fieldMap, options),
           ),
         };
       default:
@@ -311,7 +327,10 @@ export class MongooseAdapter
     }
   }
 
-  private mapOperator(condition: NormalizedCondition): unknown {
+  private mapOperator(
+    condition: NormalizedCondition,
+    options?: MongooseAdapterOptions,
+  ): unknown {
     switch (condition.operator) {
       case 'eq':
         return condition.value;
@@ -340,10 +359,31 @@ export class MongooseAdapter
       case 'elemMatch':
         return { $elemMatch: condition.value };
       default:
-        throw new Error(
-          `Operator "${condition.operator}" is not supported by MongooseAdapter`,
-        );
+        return this.resolveCustomOperator(condition, options);
     }
+  }
+
+  private resolveCustomOperator(
+    condition: NormalizedCondition,
+    options?: MongooseAdapterOptions,
+  ): unknown {
+    const plugin = getDefaultFilterOperatorRegistry().getAdapterOperator<MongooseCustomOperatorPlugin>(
+      this.ormName,
+      condition.operator,
+    );
+
+    if (!plugin) {
+      throw new Error(
+        `Operator "${condition.operator}" is not supported by MongooseAdapter`,
+      );
+    }
+
+    return plugin.apply({
+      field: condition.field,
+      operator: condition.operator,
+      value: condition.value,
+      options: options ?? ({ model: {} as MongooseModelLike } as MongooseAdapterOptions),
+    });
   }
 
   private buildSort(

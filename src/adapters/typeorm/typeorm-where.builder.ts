@@ -1,4 +1,4 @@
-import { NormalizedCondition } from '../../core';
+import { BuiltinFilterOperator, NormalizedCondition } from '../../core';
 import {
   assertSqlOperatorSupport,
   SqlDialect,
@@ -11,7 +11,7 @@ import {
 
 export function createTypeOrmOperatorHandlers(
   dependencies: TypeOrmClauseBuilderDependencies,
-): Record<NormalizedCondition['operator'], TypeOrmOperatorHandler> {
+): Record<BuiltinFilterOperator, TypeOrmOperatorHandler> {
   const dialect = dependencies.dialect;
 
   return {
@@ -71,9 +71,9 @@ export function createTypeOrmOperatorHandlers(
 }
 
 export function buildWhereClause(
-  operatorHandlers: Record<NormalizedCondition['operator'], TypeOrmOperatorHandler>,
+  operatorHandlers: Record<string, TypeOrmOperatorHandler>,
   field: string,
-  operator: NormalizedCondition['operator'],
+  operator: string,
   value: unknown,
   parameterName: string,
 ): TypeOrmWhereClause {

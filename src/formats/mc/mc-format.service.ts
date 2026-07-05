@@ -3,9 +3,14 @@ import {
   createFilterIR,
   FilterFormat,
   FilterOperator,
+  FormatOperatorPlugin,
   NormalizedCondition,
   NormalizedSort,
   Query,
+} from '../../core';
+import {
+  getDefaultFilterOperatorRegistry,
+  normalizeOperatorValidationOutcome,
 } from '../../core';
 import {
   buildAggregationDefinition,
@@ -31,6 +36,7 @@ export class MCFormat implements FilterFormat {
     family: 'mongodb',
     syntax: 'mc',
   };
+  private readonly formatName = 'mcfilter';
 
   private readonly operatorAliases: Record<string, FilterOperator> = {
     eq: 'eq',
@@ -137,9 +143,9 @@ export class MCFormat implements FilterFormat {
     },
     aggregationMetrics: import('../../core').AggregationExpression[],
   ): void {
-    const [rawName, rawValue = ''] = this.splitByUnescapedColon(segment);
+    const [rawName, ...rawValueParts] = this.splitByUnescapedColon(segment);
     const name = rawName.slice(1).trim().toLowerCase();
-    const value = rawValue.trim();
+    const value = rawValueParts.join(':').trim();
 
     switch (name) {
       case 'sort':
@@ -204,16 +210,23 @@ export class MCFormat implements FilterFormat {
     const operator = this.normalizeOperator(rawOperator);
     const rawValue = rest.join(':').trim();
 
+    const resolvedField = field.trim();
+
     return {
-      field: field.trim(),
+      field: resolvedField,
       operator,
-      value: this.parseValue(rawValue, operator),
+      value: this.parseValue(rawValue, operator, resolvedField),
     };
   }
 
   private normalizeOperator(operator: string): FilterOperator {
     const normalized = operator.replace(/^\$/, '').trim().toLowerCase();
-    const resolved = this.operatorAliases[normalized];
+    const resolved =
+      this.operatorAliases[normalized] ??
+      getDefaultFilterOperatorRegistry().resolveFormatOperatorName(
+        this.formatName,
+        normalized,
+      );
 
     if (!resolved) {
       throw new BadRequestException(`Unsupported Mongo operator "${operator}"`);
@@ -222,24 +235,88 @@ export class MCFormat implements FilterFormat {
     return resolved;
   }
 
-  private parseValue(rawValue: string, operator: FilterOperator): unknown {
+  private parseValue(
+    rawValue: string,
+    operator: FilterOperator,
+    field = '',
+  ): unknown {
+    const plugin = getDefaultFilterOperatorRegistry().getFormatOperator(
+      this.formatName,
+      operator,
+    );
+
+    if (plugin?.parseValue) {
+      const parsedValue = plugin.parseValue(rawValue, {
+        formatName: this.formatName,
+        field,
+        operator,
+        rawValue,
+        parseList: this.parseList.bind(this),
+        parseInteger: this.parseInteger.bind(this),
+        parseBoolean: this.parseBoolean.bind(this),
+        parsePrimitive: this.parsePrimitive.bind(this),
+        parseObjectLiteral: this.parseObjectLiteral.bind(this),
+      });
+      this.validatePluginValue(plugin, field, operator, rawValue, parsedValue);
+      return parsedValue;
+    }
+
+    let value: unknown;
     if (operator === 'in' || operator === 'notIn' || operator === 'all') {
-      return this.parseList(rawValue, operator).map((item) => this.parsePrimitive(item));
+      value = this.parseList(rawValue, operator).map((item) => this.parsePrimitive(item));
+      this.validatePluginValue(plugin, field, operator, rawValue, value);
+      return value;
     }
 
     if (operator === 'size') {
-      return this.parseInteger(rawValue, 'size', true);
+      value = this.parseInteger(rawValue, 'size', true);
+      this.validatePluginValue(plugin, field, operator, rawValue, value);
+      return value;
     }
 
     if (operator === 'exists') {
-      return this.parseBoolean(rawValue, 'exists');
+      value = this.parseBoolean(rawValue, 'exists');
+      this.validatePluginValue(plugin, field, operator, rawValue, value);
+      return value;
     }
 
     if (operator === 'elemMatch') {
-      return this.parseObjectLiteral(rawValue);
+      value = this.parseObjectLiteral(rawValue);
+      this.validatePluginValue(plugin, field, operator, rawValue, value);
+      return value;
     }
 
-    return this.parsePrimitive(rawValue);
+    value = this.parsePrimitive(rawValue);
+    this.validatePluginValue(plugin, field, operator, rawValue, value);
+
+    return value;
+  }
+
+  private validatePluginValue(
+    plugin: FormatOperatorPlugin | undefined,
+    field: string,
+    operator: FilterOperator,
+    rawValue: string,
+    value: unknown,
+  ): void {
+    if (!plugin?.validate) {
+      return;
+    }
+
+    const outcome = normalizeOperatorValidationOutcome(
+      plugin.validate({
+        formatName: this.formatName,
+        field,
+        operator,
+        rawValue,
+        value,
+      }),
+      { field, operator, value },
+    );
+
+    if (outcome.errors?.length) {
+      throw new BadRequestException(outcome.errors[0].message);
+    }
   }
 
   private parseSortDirective(rawSort?: string): NormalizedSort[] {

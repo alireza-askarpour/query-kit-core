@@ -15,6 +15,7 @@ import {
 } from 'sequelize';
 
 import {
+  AdapterOperatorPlugin,
   AggregateDefinition,
   AggregationExpression,
   FilterIR,
@@ -38,9 +39,11 @@ import {
 } from '../../core';
 import {
   assertSqlOperatorSupport,
+  isBuiltinSqlOperator,
   normalizeSequelizeDialect,
   SqlDialect,
 } from '../sql-dialects';
+import { getDefaultFilterOperatorRegistry } from '../../core';
 
 export interface SequelizeAdapterOptions {
   model: ModelStatic<Model>;
@@ -68,11 +71,36 @@ type SequelizeOperatorHandler = (
   where: MutableWhere,
 ) => void;
 
-type MutableWhere = WhereAttributeHash<Attributes<any>> & {
+export type MutableWhere = WhereAttributeHash<Attributes<any>> & {
   [Op.and]?: Array<ReturnType<typeof Sequelize.where>>;
 };
 
 type SequelizeWhereNode = Record<string | symbol, unknown>;
+
+export interface SequelizeOperatorPluginContext {
+  field: string;
+  operator: string;
+  value: unknown;
+  where: MutableWhere;
+  options: SequelizeAdapterOptions;
+  dialect: SqlDialect;
+  operators: typeof Op;
+}
+
+export interface SequelizeOperatorSqlContext {
+  column: string;
+  operator: string;
+  value: unknown;
+  options: SequelizeAdapterOptions;
+  dialect: SqlDialect;
+  escapeValue(value: unknown): string;
+  quoteIdentifier(identifier: string): string;
+}
+
+export interface SequelizeCustomOperatorPlugin
+  extends AdapterOperatorPlugin<SequelizeOperatorPluginContext, void> {
+  buildSql?(context: SequelizeOperatorSqlContext): string;
+}
 
 @Injectable()
 export class SequelizeAdapter
@@ -152,21 +180,41 @@ export class SequelizeAdapter
     operatorHandlers: Record<string, SequelizeOperatorHandler>,
     dialect: SqlDialect,
   ): void {
-    assertSqlOperatorSupport(
-      dialect,
-      condition.operator,
-      'Sequelize adapter',
-    );
+    if (isBuiltinSqlOperator(condition.operator)) {
+      assertSqlOperatorSupport(
+        dialect,
+        condition.operator,
+        'Sequelize adapter',
+      );
+    }
 
     const field = options.fieldMap?.[condition.field] ?? condition.field;
     const resolvedField = condition.field.includes('.') ? `$${field}$` : field;
     const handler = operatorHandlers[condition.operator];
 
-    if (!handler) {
+    if (handler) {
+      handler(resolvedField, condition.value, where);
+      return;
+    }
+
+    const plugin = getDefaultFilterOperatorRegistry().getAdapterOperator<SequelizeCustomOperatorPlugin>(
+      this.ormName,
+      condition.operator,
+    );
+
+    if (!plugin) {
       throw new Error(`Unsupported operator "${condition.operator}"`);
     }
 
-    handler(resolvedField, condition.value, where);
+    plugin.apply({
+      field: resolvedField,
+      operator: condition.operator,
+      value: condition.value,
+      where,
+      options,
+      dialect,
+      operators: Op,
+    });
   }
 
   private buildLogicalWhere(
@@ -525,11 +573,13 @@ export class SequelizeAdapter
     options: SequelizeAdapterOptions,
     dialect: SqlDialect,
   ): string {
-    assertSqlOperatorSupport(
-      dialect,
-      operator,
-      'Sequelize adapter CASE expression',
-    );
+    if (isBuiltinSqlOperator(operator)) {
+      assertSqlOperatorSupport(
+        dialect,
+        operator,
+        'Sequelize adapter CASE expression',
+      );
+    }
 
     switch (operator) {
       case 'eq':
@@ -588,6 +638,23 @@ export class SequelizeAdapter
         return `${column} ${value ? 'IS NULL' : 'IS NOT NULL'}`;
       default:
         break;
+    }
+
+    const plugin = getDefaultFilterOperatorRegistry().getAdapterOperator<SequelizeCustomOperatorPlugin>(
+      this.ormName,
+      operator,
+    );
+
+    if (plugin?.buildSql) {
+      return plugin.buildSql({
+        column,
+        operator,
+        value,
+        options,
+        dialect,
+        escapeValue: (input) => this.escapeValue(input, options),
+        quoteIdentifier: this.quoteIdentifier.bind(this),
+      });
     }
 
     throw new Error(`Unsupported CASE operator "${operator}"`);

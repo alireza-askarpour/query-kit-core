@@ -1,4 +1,4 @@
-export type FilterOperator =
+export type BuiltinFilterOperator =
   | 'eq'
   | 'neq'
   | 'gt'
@@ -27,6 +27,8 @@ export type FilterOperator =
   | 'month'
   | 'day'
   | 'elemMatch';
+
+export type FilterOperator = BuiltinFilterOperator | (string & {});
 
 export interface RelationDefinition {
   path: string;
@@ -412,7 +414,12 @@ function normalizeRelationDirective(
   relation: string | RelationDefinition,
 ): RelationDefinition {
   if (typeof relation === 'string') {
-    return { path: relation };
+    return {
+      path: relation,
+      fields: undefined,
+      nested: undefined,
+      required: undefined,
+    };
   }
 
   return {

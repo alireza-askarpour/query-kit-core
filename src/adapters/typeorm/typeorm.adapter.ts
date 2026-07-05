@@ -16,7 +16,7 @@ import {
   NormalizedCondition,
   QueryAdapter,
 } from '../../core';
-import { assertSqlOperatorSupport } from '../sql-dialects';
+import { assertSqlOperatorSupport, isBuiltinSqlOperator } from '../sql-dialects';
 import {
   applyAggregations,
   applyCaseExpressions,
@@ -31,14 +31,17 @@ import {
   resolveField,
 } from './typeorm.utils';
 import {
+  TypeOrmCustomOperatorPlugin,
   TypeOrmAdapterOptions,
   TypeOrmOperatorHandler,
+  TypeOrmOperatorPluginContext,
   TypeOrmQueryBuilderLike,
 } from './typeorm.types';
 import {
   buildWhereClause,
   createTypeOrmOperatorHandlers,
 } from './typeorm-where.builder';
+import { getDefaultFilterOperatorRegistry } from '../../core';
 
 @Injectable()
 export class TypeOrmAdapter
@@ -59,10 +62,7 @@ export class TypeOrmAdapter
     family: 'sql',
     engine: 'typeorm',
   };
-  private readonly operatorHandlers: Record<
-    NormalizedCondition['operator'],
-    TypeOrmOperatorHandler
-  >;
+  private readonly operatorHandlers: Record<string, TypeOrmOperatorHandler>;
 
   constructor() {
     this.operatorHandlers = createTypeOrmOperatorHandlers({
@@ -132,27 +132,15 @@ export class TypeOrmAdapter
     options: TypeOrmAdapterOptions<TQueryBuilder>,
     operatorHandlers: typeof this.operatorHandlers,
   ): void {
-    const handler = operatorHandlers[condition.operator];
-
-    if (!handler) {
-      throw new Error(
-        `Operator "${condition.operator}" not supported in TypeORM adapter`,
-      );
-    }
-
-    assertSqlOperatorSupport(
-      options.dialect ?? 'postgres',
-      condition.operator,
-      'TypeORM adapter',
-    );
     const field = resolveField(condition.field, options);
     const parameterName = createParameterName(condition.field, condition.operator);
-    const whereClause = buildWhereClause(
-      operatorHandlers,
+    const whereClause = this.buildOperatorClause(
       field,
       condition.operator,
       condition.value,
       parameterName,
+      options,
+      operatorHandlers,
     );
 
     queryBuilder.andWhere(whereClause.condition, whereClause.parameters);
@@ -166,31 +154,19 @@ export class TypeOrmAdapter
   ): { condition: string; parameters?: Record<string, unknown> } {
     switch (expression.kind) {
       case 'predicate': {
-        const handler = operatorHandlers[expression.predicate.operator];
-
-        if (!handler) {
-          throw new Error(
-            `Operator "${expression.predicate.operator}" not supported in TypeORM adapter`,
-          );
-        }
-
-        assertSqlOperatorSupport(
-          options.dialect ?? 'postgres',
-          expression.predicate.operator,
-          'TypeORM adapter',
-        );
         const field = resolveField(expression.predicate.field, options);
         const parameterName = `${createParameterName(
           expression.predicate.field,
           expression.predicate.operator,
         )}_${scope.join('_') || 'root'}`;
 
-        return buildWhereClause(
-          operatorHandlers,
+        return this.buildOperatorClause(
           field,
           expression.predicate.operator,
           expression.predicate.value,
           parameterName,
+          options,
+          operatorHandlers,
         );
       }
       case 'not': {
@@ -242,11 +218,6 @@ export class TypeOrmAdapter
   ): string {
     const clauses = expression.cases
       .map((entry, caseIndex) => {
-        assertSqlOperatorSupport(
-          options.dialect ?? 'postgres',
-          entry.when.operator,
-          'TypeORM adapter CASE expression',
-        );
         const field = resolveField(entry.when.field, options);
         const parameterName = createCaseParameterName(
           expression.outputField,
@@ -306,12 +277,13 @@ export class TypeOrmAdapter
       aggregation,
       options,
     );
-    const clause = buildWhereClause(
-      operatorHandlers,
+    const clause = this.buildOperatorClause(
       field,
       predicate.operator,
       predicate.value,
       createParameterName(predicate.field, predicate.operator),
+      options,
+      operatorHandlers,
     );
 
     return inlineCondition(clause, escapeLiteral);
@@ -350,5 +322,47 @@ export class TypeOrmAdapter
 
   private assertNeverAggregationOperator(operator: never): never {
     throw new Error(`Unhandled aggregation operator: ${String(operator)}`);
+  }
+
+  private buildOperatorClause<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+    field: string,
+    operator: string,
+    value: unknown,
+    parameterName: string,
+    options: TypeOrmAdapterOptions<TQueryBuilder>,
+    operatorHandlers: Record<string, TypeOrmOperatorHandler>,
+  ) {
+    if (
+      isBuiltinSqlOperator(operator) &&
+      Object.prototype.hasOwnProperty.call(operatorHandlers, operator)
+    ) {
+      assertSqlOperatorSupport(
+        options.dialect ?? 'postgres',
+        operator,
+        'TypeORM adapter',
+      );
+      return buildWhereClause(operatorHandlers, field, operator, value, parameterName);
+    }
+
+    const plugin = getDefaultFilterOperatorRegistry().getAdapterOperator<TypeOrmCustomOperatorPlugin<TQueryBuilder>>(
+      this.ormName,
+      operator,
+    );
+
+    if (!plugin) {
+      throw new Error(`Operator "${operator}" not supported in TypeORM adapter`);
+    }
+
+    const context: TypeOrmOperatorPluginContext<TQueryBuilder> = {
+      field,
+      operator,
+      value,
+      parameterName,
+      options,
+      dialect: options.dialect ?? 'postgres',
+      escapeLiteral,
+    };
+
+    return plugin.apply(context);
   }
 }

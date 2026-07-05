@@ -17,7 +17,7 @@
   },
   "sideEffects": false,
   "scripts": {
-    "build": "nest build",
+    "build": "rm -rf dist_tmp && tsc -p tsconfig.build.json --outDir dist_tmp && rm -rf dist && mv dist_tmp dist",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",

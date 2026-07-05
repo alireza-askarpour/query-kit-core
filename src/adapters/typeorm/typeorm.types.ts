@@ -1,4 +1,8 @@
-import { NormalizedCondition, RelationDefinition } from '../../core';
+import {
+  AdapterOperatorPlugin,
+  BuiltinFilterOperator,
+  RelationDefinition,
+} from '../../core';
 import { SqlDialect } from '../sql-dialects';
 
 export interface TypeOrmQueryBuilderLike {
@@ -46,9 +50,28 @@ export type TypeOrmOperatorHandler = (
   parameterName: string,
 ) => TypeOrmWhereClause;
 
+export interface TypeOrmOperatorPluginContext<
+  TQueryBuilder extends TypeOrmQueryBuilderLike = TypeOrmQueryBuilderLike,
+> {
+  field: string;
+  operator: string;
+  value: unknown;
+  parameterName: string;
+  options: TypeOrmAdapterOptions<TQueryBuilder>;
+  dialect: SqlDialect;
+  escapeLiteral(value: unknown): string;
+}
+
+export interface TypeOrmCustomOperatorPlugin<
+  TQueryBuilder extends TypeOrmQueryBuilderLike = TypeOrmQueryBuilderLike,
+> extends AdapterOperatorPlugin<
+    TypeOrmOperatorPluginContext<TQueryBuilder>,
+    TypeOrmWhereClause
+  > {}
+
 export interface TypeOrmClauseBuilderDependencies {
   escapeLiteral(value: unknown): string;
   dialect: SqlDialect;
 }
 
-export type SupportedTypeOrmOperator = NormalizedCondition['operator'];
+export type SupportedTypeOrmOperator = BuiltinFilterOperator;

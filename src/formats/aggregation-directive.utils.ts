@@ -76,7 +76,7 @@ function parseAggregationMetric(item: string): AggregationExpression {
   const alias = match[3]?.trim() || createDefaultAlias(operator, field);
 
   if (operator === 'count') {
-    return { operator, field, alias };
+    return field ? { operator, field, alias } : { operator, alias };
   }
 
   if (!field) {
