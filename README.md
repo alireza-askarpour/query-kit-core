@@ -220,6 +220,39 @@ Built-in validators now support stronger schema-driven policies:
 - global custom validator hook
 - role-based field access
 
+## Policy layer
+
+The processor now supports a core policy layer for security and performance controls.
+
+Supported limits:
+
+- `maxExpressionDepth`
+- `maxRelationDepth`
+- `maxJoins`
+- `maxPopulates`
+- `maxArrayLength`
+- `regex.maxLength`
+- `regex.maxComplexityScore`
+- `denyExpensiveOperatorsOnPublicEndpoints`
+
+Example:
+
+```ts
+const processor = new FilterProcessor(registry, {
+  defaultFormat: 'scfilter',
+  defaultOrm: 'sequelize',
+  policy: {
+    maxExpressionDepth: 3,
+    maxJoins: 4,
+    maxArrayLength: 50,
+    denyExpensiveOperatorsOnPublicEndpoints: true,
+    regex: {
+      maxComplexityScore: 80,
+    },
+  },
+});
+```
+
 ## Custom operator plugins
 
 You can add new operators without changing the package core by registering format and adapter plugins in the global operator registry.

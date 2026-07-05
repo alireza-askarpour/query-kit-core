@@ -1,19 +1,21 @@
 import { Query } from './filter-format.interface';
 import { FilterAuditResult } from './filter-diagnostics.interface';
+import { FilterPolicyContext, FilterPolicyOptions } from './filter-policy.interface';
 
 export interface FilterPipelineOptions<
   TSchema = unknown,
-  TValidationContext = unknown,
+  TValidationContext = FilterPolicyContext,
 > {
   validate?: boolean;
   schema?: TSchema;
   validationContext?: TValidationContext;
+  policy?: FilterPolicyOptions;
 }
 
 export interface FilterProcessRequest<
   TAdapterOptions = unknown,
   TSchema = unknown,
-  TValidationContext = unknown,
+  TValidationContext = FilterPolicyContext,
 > {
   query: string | Query;
   formatName?: string;
@@ -26,6 +28,7 @@ export interface FilterRuntimeOptions {
   defaultFormat?: string;
   defaultOrm?: string;
   enableValidation?: boolean;
+  policy?: FilterPolicyOptions;
 }
 
 export interface FilterAuditor {

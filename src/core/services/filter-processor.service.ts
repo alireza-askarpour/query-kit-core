@@ -11,6 +11,7 @@ import {
   FilterAuditResult,
   FilterAuditError,
   FilterCapabilities,
+  FilterPolicyContext,
   FilterValidationIssue,
   FilterProcessRequest,
   FilterRuntimeOptions,
@@ -20,6 +21,7 @@ import {
   FilterIR,
   createLogicalGroupNode,
   createPredicateNode,
+  evaluateFilterPolicy,
   getCapabilityRequirements,
   getPredicates,
   getProjectionFields,
@@ -83,6 +85,7 @@ export class FilterProcessor {
     const format = formatRegistration.format;
     const normalized = format.parse(normalizedQuery);
     this.validateNormalizedQuery(normalized);
+    this.validatePolicy(normalized, request.pipeline?.policy, request.pipeline?.validationContext);
     this.validateCapabilities(
       'Format',
       format.name,
@@ -229,6 +232,16 @@ export class FilterProcessor {
     );
     if (semanticIssues.length > 0) {
       validationErrors.push(...semanticIssues);
+    }
+
+    const policyEvaluation = evaluateFilterPolicy(
+      normalized,
+      this.resolvePolicy(request.pipeline?.policy),
+      request.pipeline?.validationContext,
+    );
+    appliedValidationRules.push(this.createPolicyRule(policyEvaluation.errors));
+    if (policyEvaluation.errors.length > 0) {
+      validationErrors.push(...policyEvaluation.errors);
     }
 
     const formatMissingCapabilities = this.getMissingCapabilities(
@@ -443,6 +456,28 @@ export class FilterProcessor {
     );
   }
 
+  private validatePolicy(
+    normalized: FilterIR,
+    requestPolicy: FilterRuntimeOptions['policy'],
+    context?: FilterPolicyContext,
+  ): void {
+    const result = evaluateFilterPolicy(
+      normalized,
+      this.resolvePolicy(requestPolicy),
+      context,
+    );
+
+    if (result.errors.length === 0) {
+      return;
+    }
+
+    throw new BadRequestException({
+      message: 'Filter policy validation failed',
+      errors: result.errors,
+      warnings: result.warnings,
+    });
+  }
+
   private getMissingCapabilities(
     capabilities: FilterCapabilities | undefined,
     normalized: FilterIR,
@@ -536,6 +571,25 @@ export class FilterProcessor {
         issues.length > 0
           ? 'Neutral filter IR semantic validation failed'
           : 'Neutral filter IR semantic validation passed',
+      targetType: 'processor',
+      targetName: 'FilterProcessor',
+      details: {
+        issueCount: issues.length,
+      },
+    };
+  }
+
+  private createPolicyRule(
+    issues: FilterValidationIssue[],
+  ): AppliedValidationRuleDiagnostic {
+    return {
+      code: 'POLICY_LAYER',
+      stage: 'policy',
+      status: issues.length > 0 ? 'failed' : 'passed',
+      message:
+        issues.length > 0
+          ? 'Policy layer rejected the filter request'
+          : 'Policy layer accepted the filter request',
       targetType: 'processor',
       targetName: 'FilterProcessor',
       details: {
@@ -681,6 +735,23 @@ export class FilterProcessor {
       errors: validation.result.errors,
       warnings: validation.result.warnings,
     });
+  }
+
+  private resolvePolicy(
+    requestPolicy: FilterRuntimeOptions['policy'] | undefined,
+  ): FilterRuntimeOptions['policy'] | undefined {
+    if (!this.runtimeOptions.policy && !requestPolicy) {
+      return undefined;
+    }
+
+    return {
+      ...(this.runtimeOptions.policy ?? {}),
+      ...(requestPolicy ?? {}),
+      regex: {
+        ...(this.runtimeOptions.policy?.regex ?? {}),
+        ...(requestPolicy?.regex ?? {}),
+      },
+    };
   }
 
   private getRelationCount(normalized: FilterIR): number {

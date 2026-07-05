@@ -7,6 +7,7 @@ export type FilterDiagnosticStage =
   | 'validation'
   | 'parsing'
   | 'semantic-validation'
+  | 'policy'
   | 'capability-check'
   | 'adapter-strategy'
   | 'adapter-convert';

@@ -579,3 +579,141 @@ test('auditWith captures validation failures without throwing', () => {
     'failed',
   );
 });
+
+test('processWith fails when policy max expression depth is exceeded', () => {
+  const { registry } = createRegistry();
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    policy: {
+      maxExpressionDepth: 2,
+    },
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: '((status:eq:active|status:eq:pending);price:gt:100)',
+      }),
+    /Filter policy validation failed/,
+  );
+});
+
+test('processWith fails when relation count exceeds policy limit', () => {
+  const { registry } = createRegistry();
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    policy: {
+      maxJoins: 1,
+    },
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: {
+          filterString: 'status:eq:active',
+          relations: ['profile', 'orders'],
+        },
+      }),
+    /Filter policy validation failed/,
+  );
+});
+
+test('processWith fails when array length exceeds policy limit', () => {
+  const { registry } = createRegistry();
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    policy: {
+      maxArrayLength: 2,
+    },
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'tags:in:new,hot,featured',
+      }),
+    /Filter policy validation failed/,
+  );
+});
+
+test('processWith fails when regex complexity exceeds policy limit', () => {
+  const { registry } = createRegistry();
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    policy: {
+      regex: {
+        maxComplexityScore: 10,
+      },
+    },
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'name:regex:(foo|bar|baz)+[A-Z]{2,4}',
+      }),
+    /Filter policy validation failed/,
+  );
+});
+
+test('processWith denies expensive operators on public endpoints', () => {
+  const { registry } = createRegistry();
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    policy: {
+      denyExpensiveOperatorsOnPublicEndpoints: true,
+      expensiveOperators: ['regex', 'contains'],
+    },
+  });
+
+  assert.throws(
+    () =>
+      processor.processWith({
+        query: 'name:regex:^A.*',
+        pipeline: {
+          validationContext: {
+            endpointVisibility: 'public',
+          },
+        },
+      }),
+    /Filter policy validation failed/,
+  );
+});
+
+test('auditWith reports policy violations without throwing', () => {
+  const { registry } = createRegistry();
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    policy: {
+      maxPopulates: 1,
+    },
+  });
+
+  const audit = processor.auditWith({
+    query: {
+      filterString: 'status:eq:active',
+      relations: ['profile', 'orders'],
+    },
+  });
+
+  assert.equal(audit.ok, false);
+  assert.equal(
+    audit.validationErrors.some(
+      (issue) => issue.code === 'POLICY_MAX_POPULATES_EXCEEDED',
+    ),
+    true,
+  );
+  assert.equal(
+    audit.appliedValidationRules.some(
+      (rule) => rule.code === 'POLICY_LAYER' && rule.status === 'failed',
+    ),
+    true,
+  );
+});
