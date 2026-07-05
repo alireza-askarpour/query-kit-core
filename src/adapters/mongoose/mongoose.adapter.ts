@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AdapterStrategyDiagnostic,
   AdapterOperatorPlugin,
   AggregateDefinition,
   AggregationExpression,
@@ -140,6 +141,42 @@ export class MongooseAdapter
     }
 
     return query;
+  }
+
+  describeStrategy<TResult = unknown>(
+    normalized: FilterIR,
+    options: MongooseAdapterOptions<TResult>,
+  ): AdapterStrategyDiagnostic {
+    const aggregation = getAggregationDefinition(normalized);
+
+    return {
+      adapterName: this.ormName,
+      family: 'mongodb',
+      engine: 'mongoose',
+      mode: aggregation ? 'aggregate-pipeline' : 'find-query',
+      usesLogicalExpression: hasComplexLogicalExpression(normalized),
+      usesAggregation: Boolean(aggregation),
+      usesRelations: this.getRelationCount(normalized) > 0,
+      usesProjection: (getProjectionFields(normalized)?.length ?? 0) > 0,
+      notes: [
+        aggregation
+          ? 'Builds a MongoDB aggregation pipeline with $match/$group/$project stages'
+          : 'Builds a find() filter with optional projection and populate',
+        options.populateMap
+          ? 'Uses populate map overrides when relation definitions are provided'
+          : 'Uses direct relation-to-populate mapping',
+      ],
+      details: {
+        predicateCount: getPredicates(normalized).length,
+        sortCount: getSorting(normalized).length,
+        relationCount: this.getRelationCount(normalized),
+      },
+    };
+  }
+
+  private getRelationCount(normalized: FilterIR): number {
+    const relations = getRelations(normalized);
+    return !relations ? 0 : Array.isArray(relations) ? relations.length : 1;
   }
 
   private buildAggregateQuery<TResult = unknown>(

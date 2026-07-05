@@ -23,6 +23,18 @@ class MockAdapter {
     this.calls.push({ normalized, options });
     return { normalized, options };
   }
+
+  describeStrategy(normalized) {
+    return {
+      adapterName: this.ormName,
+      mode: 'mock-convert',
+      usesLogicalExpression: Boolean(normalized.logicalExpression),
+      usesAggregation: Boolean(normalized.aggregate),
+      usesRelations: (normalized.relationLoad?.length ?? 0) > 0,
+      usesProjection: (normalized.fields?.length ?? 0) > 0,
+      notes: ['Uses mock adapter strategy for diagnostics'],
+    };
+  }
 }
 
 class PassingValidator {
@@ -471,5 +483,99 @@ test('processWith fails fast on invalid aggregation sort field', () => {
         query: 'ignored',
       }),
     /Filter semantic validation failed/,
+  );
+});
+
+test('auditWith returns parsed AST, applied rules, and chosen adapter strategy', () => {
+  const validator = new PassingValidator();
+  const { registry } = createRegistry({ validator });
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    enableValidation: true,
+  });
+
+  const audit = processor.auditWith({
+    query: 'status:eq:active;price:gt:100',
+    pipeline: {
+      schema: {
+        status: { type: 'string' },
+        price: { type: 'number' },
+      },
+    },
+  });
+
+  assert.equal(audit.ok, true);
+  assert.equal(audit.parsedAst.kind, 'group');
+  assert.equal(audit.appliedValidationRules.length >= 4, true);
+  assert.equal(audit.chosenAdapterStrategy.mode, 'mock-convert');
+  assert.deepEqual(audit.unsupportedFeatures, []);
+  assert.equal(audit.result.normalized.conditions.length, 2);
+});
+
+test('auditWith reports unsupported features without throwing', () => {
+  const registry = new FilterRegistry();
+  registry.registerFormatRegistration({
+    format: new CapabilityFormat({
+      capabilities: {
+        supportsRegex: false,
+      },
+      parsed: createFilterIR({
+        predicates: [{ field: 'name', operator: 'regex', value: '^A' }],
+      }),
+    }),
+  });
+  registry.registerAdapter(
+    new MockAdapter({
+      supportsRegex: false,
+    }),
+  );
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'capability',
+    defaultOrm: 'mock',
+  });
+
+  const audit = processor.auditWith({
+    query: 'ignored',
+  });
+
+  assert.equal(audit.ok, false);
+  assert.deepEqual(
+    audit.unsupportedFeatures.map((item) => item.message),
+    [
+      'Format "capability" does not support: regex operators',
+      'Adapter "mock" does not support: regex operators',
+    ],
+  );
+  assert.equal(
+    audit.appliedValidationRules.some(
+      (rule) =>
+        rule.code === 'CAPABILITY_CHECK' && rule.status === 'failed',
+    ),
+    true,
+  );
+  assert.equal(audit.result, undefined);
+});
+
+test('auditWith captures validation failures without throwing', () => {
+  const { registry } = createRegistry({ validator: new FailingValidator() });
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'scfilter',
+    defaultOrm: 'mock',
+    enableValidation: true,
+  });
+
+  const audit = processor.auditWith({
+    query: 'status:eq:active',
+  });
+
+  assert.equal(audit.ok, false);
+  assert.equal(audit.validationErrors.length, 1);
+  assert.equal(audit.validationErrors[0].code, 'INVALID');
+  assert.equal(
+    audit.appliedValidationRules.find((rule) => rule.code === 'FORMAT_VALIDATOR')
+      .status,
+    'failed',
   );
 });

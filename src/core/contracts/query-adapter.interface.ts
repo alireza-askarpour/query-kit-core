@@ -1,4 +1,5 @@
 import { FilterIR } from '../types/normalized-filter.interface';
+import { AdapterStrategyDiagnostic } from './filter-diagnostics.interface';
 import {
   FilterCapabilities,
   FilterMetadata,
@@ -12,4 +13,8 @@ export interface QueryAdapter<TQueryBuilder = unknown, TOptions = unknown> {
     normalized: FilterIR,
     options?: TOptions,
   ): Promise<TQueryBuilder> | TQueryBuilder;
+  describeStrategy?(
+    normalized: FilterIR,
+    options?: TOptions,
+  ): AdapterStrategyDiagnostic;
 }

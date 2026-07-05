@@ -1,4 +1,5 @@
 import { Query } from './filter-format.interface';
+import { FilterAuditResult } from './filter-diagnostics.interface';
 
 export interface FilterPipelineOptions<
   TSchema = unknown,
@@ -25,4 +26,13 @@ export interface FilterRuntimeOptions {
   defaultFormat?: string;
   defaultOrm?: string;
   enableValidation?: boolean;
+}
+
+export interface FilterAuditor {
+  audit<TQueryResult = unknown, TAdapterOptions = unknown>(
+    query: string | Query,
+    formatName: string,
+    ormName: string,
+    options?: TAdapterOptions,
+  ): FilterAuditResult<TQueryResult>;
 }

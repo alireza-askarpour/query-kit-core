@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  AdapterStrategyDiagnostic,
   AggregationExpression,
   FilterIR,
   FilterExpressionNode,
@@ -124,6 +125,45 @@ export class TypeOrmAdapter
     applyPagination(queryBuilder, normalized, options);
 
     return queryBuilder;
+  }
+
+  describeStrategy<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+    normalized: FilterIR,
+    options: TypeOrmAdapterOptions<TQueryBuilder>,
+  ): AdapterStrategyDiagnostic {
+    const aggregation = getAggregationDefinition(normalized);
+    const sqlFeatures = getSqlFilterFeatures(normalized);
+    const dialect = options.dialect ?? 'postgres';
+
+    return {
+      adapterName: this.ormName,
+      family: 'sql',
+      engine: 'typeorm',
+      mode: aggregation ? 'query-builder-aggregation' : 'query-builder-filter',
+      dialect,
+      usesLogicalExpression: hasComplexLogicalExpression(normalized),
+      usesAggregation: Boolean(aggregation),
+      usesRelations: this.getRelationCount(normalized) > 0,
+      usesProjection: (getProjectionFields(normalized)?.length ?? 0) > 0,
+      notes: [
+        aggregation
+          ? 'Builds SELECT, GROUP BY, and HAVING clauses through the query builder'
+          : 'Builds WHERE predicates through the query builder',
+        sqlFeatures.caseExpressions?.length
+          ? 'Emits CASE expressions into select clauses'
+          : 'No CASE expressions detected',
+      ],
+      details: {
+        predicateCount: getPredicates(normalized).length,
+        sortCount: getSorting(normalized).length,
+        relationCount: this.getRelationCount(normalized),
+      },
+    };
+  }
+
+  private getRelationCount(normalized: FilterIR): number {
+    const relations = getRelations(normalized);
+    return !relations ? 0 : Array.isArray(relations) ? relations.length : 1;
   }
 
   private applyCondition<TQueryBuilder extends TypeOrmQueryBuilderLike>(

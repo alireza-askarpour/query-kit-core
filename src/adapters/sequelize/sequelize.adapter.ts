@@ -15,6 +15,7 @@ import {
 } from 'sequelize';
 
 import {
+  AdapterStrategyDiagnostic,
   AdapterOperatorPlugin,
   AggregateDefinition,
   AggregationExpression,
@@ -171,6 +172,44 @@ export class SequelizeAdapter
           )
         : undefined,
     };
+  }
+
+  describeStrategy(
+    normalized: FilterIR,
+    options: SequelizeAdapterOptions,
+  ): AdapterStrategyDiagnostic {
+    const aggregation = getAggregationDefinition(normalized);
+    const dialect = this.resolveDialect(options);
+
+    return {
+      adapterName: this.ormName,
+      family: 'sql',
+      engine: 'sequelize',
+      mode: aggregation ? 'find-options-aggregation' : 'find-options-filter',
+      dialect,
+      usesLogicalExpression: hasComplexLogicalExpression(normalized),
+      usesAggregation: Boolean(aggregation),
+      usesRelations: this.getRelationCount(normalized) > 0,
+      usesProjection: (getProjectionFields(normalized)?.length ?? 0) > 0,
+      notes: [
+        aggregation
+          ? 'Builds group, attributes, and literal HAVING clauses'
+          : 'Builds where/order/include find options',
+        this.getRelationCount(normalized)
+          ? 'Uses Sequelize include definitions for relation loading'
+          : 'No relation includes detected',
+      ],
+      details: {
+        predicateCount: getPredicates(normalized).length,
+        sortCount: getSorting(normalized).length,
+        relationCount: this.getRelationCount(normalized),
+      },
+    };
+  }
+
+  private getRelationCount(normalized: FilterIR): number {
+    const relations = getRelations(normalized);
+    return !relations ? 0 : Array.isArray(relations) ? relations.length : 1;
   }
 
   private applyCondition(

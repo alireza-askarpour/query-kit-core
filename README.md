@@ -122,6 +122,42 @@ Supported aggregation directives in built-in formats:
 - `TypeOrmAdapter`
 - `FilterModule`
 
+## Audit / debug mode
+
+For production debugging, `FilterProcessor` now exposes a non-throwing diagnostic path through `auditWith()` and `audit()`.
+
+The audit output includes:
+
+- parsed AST
+- neutral filter IR
+- applied validation rules
+- chosen adapter strategy
+- unsupported features
+- validation errors and warnings
+
+Example:
+
+```ts
+const audit = processor.auditWith({
+  query: 'status:eq:active;@groupBy:status;@aggregate:count(*):total;@having:total:gte:1',
+  pipeline: {
+    validate: true,
+    schema: {
+      status: { type: 'string' },
+    },
+  },
+  adapterOptions: {
+    model: ProductModel,
+    dialect: 'postgres',
+  },
+});
+
+console.log(audit.parsedAst);
+console.log(audit.appliedValidationRules);
+console.log(audit.chosenAdapterStrategy);
+console.log(audit.unsupportedFeatures);
+```
+
 ## Relation loading contract
 
 Neutral relation loading now supports:
