@@ -28,10 +28,17 @@ export type FilterOperator =
   | 'day'
   | 'elemMatch';
 
+export interface RelationDefinition {
+  path: string;
+  fields?: string[];
+  nested?: RelationDirective;
+  required?: boolean;
+}
+
 export type RelationDirective =
   | string
-  | Record<string, unknown>
-  | Array<string | Record<string, unknown>>;
+  | RelationDefinition
+  | Array<string | RelationDefinition>;
 
 export interface FilterPredicate {
   field: string;
@@ -286,6 +293,18 @@ export function getRelations(
   );
 }
 
+export function normalizeRelationDirectives(
+  relations: RelationDirective | undefined,
+): RelationDefinition[] {
+  if (!relations) {
+    return [];
+  }
+
+  const items = Array.isArray(relations) ? relations : [relations];
+
+  return items.map((item) => normalizeRelationDirective(item));
+}
+
 export function getSqlFilterFeatures(
   filter: FilterIR | NormalizedFilter,
 ): SqlFilterFeatures {
@@ -387,6 +406,23 @@ function collectPredicates(expression: FilterExpressionNode): FilterPredicate[] 
     default:
       return assertNeverExpression(expression);
   }
+}
+
+function normalizeRelationDirective(
+  relation: string | RelationDefinition,
+): RelationDefinition {
+  if (typeof relation === 'string') {
+    return { path: relation };
+  }
+
+  return {
+    path: relation.path,
+    fields: relation.fields?.length ? [...relation.fields] : undefined,
+    nested: relation.nested
+      ? normalizeRelationDirectives(relation.nested)
+      : undefined,
+    required: relation.required,
+  };
 }
 
 function assertNeverExpression(expression: never): never {

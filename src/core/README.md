@@ -32,7 +32,14 @@ src/core/
 
 The shared neutral internal representation between formats and adapters.
 
-Backend-specific concerns should flow through `extensions` instead of being promoted into the neutral IR surface by default.
+Neutral concerns such as predicates, sorting, aggregation, projection, and relation loading live directly in `FilterIR`.
+
+Relation loading supports a unified contract with:
+
+- `path`
+- `fields`
+- `nested`
+- `required`
 
 ### `NormalizedFilter`
 

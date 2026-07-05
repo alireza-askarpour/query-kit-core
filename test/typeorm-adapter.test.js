@@ -15,6 +15,8 @@ class MockQueryBuilder {
     this.addSelectCalls = [];
     this.leftJoinCalls = [];
     this.leftJoinAndSelectCalls = [];
+    this.innerJoinCalls = [];
+    this.innerJoinAndSelectCalls = [];
     this.groupByCalls = [];
     this.havingCalls = [];
   }
@@ -56,6 +58,16 @@ class MockQueryBuilder {
 
   leftJoinAndSelect(path, alias) {
     this.leftJoinAndSelectCalls.push({ path, alias });
+    return this;
+  }
+
+  innerJoin(path, alias) {
+    this.innerJoinCalls.push({ path, alias });
+    return this;
+  }
+
+  innerJoinAndSelect(path, alias) {
+    this.innerJoinAndSelectCalls.push({ path, alias });
     return this;
   }
 
@@ -444,6 +456,40 @@ test('deduplicates mapped include aliases', () => {
   );
 
   assert.equal(queryBuilder.leftJoinAndSelectCalls.length, 1);
+});
+
+test('supports neutral relation definitions with fields, nesting, and required joins', () => {
+  const adapter = createAdapter();
+  const queryBuilder = createBuilder();
+
+  adapter.convert(
+    {
+      customInclude: [
+        {
+          path: 'orders',
+          fields: ['id', 'total'],
+          required: true,
+          nested: [{ path: 'items', fields: ['sku'] }],
+        },
+      ],
+    },
+    {
+      queryBuilder,
+      rootAlias: 'user',
+    },
+  );
+
+  assert.deepEqual(queryBuilder.innerJoinCalls, [
+    { path: 'user.orders', alias: 'user_orders' },
+  ]);
+  assert.deepEqual(queryBuilder.leftJoinCalls, [
+    { path: 'user_orders.items', alias: 'user_orders_items' },
+  ]);
+  assert.deepEqual(queryBuilder.addSelectCalls, [
+    { selection: 'user_orders.id', aliasName: undefined },
+    { selection: 'user_orders.total', aliasName: undefined },
+    { selection: 'user_orders_items.sku', aliasName: undefined },
+  ]);
 });
 
 test('throws on unsupported operator in where builder', () => {

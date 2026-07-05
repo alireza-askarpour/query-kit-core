@@ -29,10 +29,12 @@ import {
   getSorting,
   hasComplexLogicalExpression,
   getSqlFilterFeatures,
+  normalizeRelationDirectives,
   NormalizedCaseExpression,
   NormalizedCondition,
   NormalizedSort,
   QueryAdapter,
+  RelationDefinition,
 } from '../../core';
 import {
   assertSqlOperatorSupport,
@@ -345,19 +347,55 @@ export class SequelizeAdapter
     include?: ReturnType<typeof getRelations>,
     includeMap?: Record<string, Includeable>,
   ): Includeable[] {
-    if (!include) {
-      return [];
+    return normalizeRelationDirectives(include).map((relation) =>
+      this.buildIncludeable(relation, includeMap),
+    );
+  }
+
+  private buildIncludeable(
+    relation: RelationDefinition,
+    includeMap?: Record<string, Includeable>,
+  ): Includeable {
+    const mappedInclude = includeMap?.[relation.path];
+
+    if (mappedInclude && typeof mappedInclude === 'object' && !Array.isArray(mappedInclude)) {
+      const includeOptions = mappedInclude as Record<string, unknown>;
+
+      return {
+        ...includeOptions,
+        ...(relation.fields?.length ? { attributes: relation.fields } : {}),
+        ...(relation.required !== undefined ? { required: relation.required } : {}),
+        ...(relation.nested
+          ? {
+              include: normalizeRelationDirectives(relation.nested).map((nested) =>
+                this.buildIncludeable(nested, includeMap),
+              ),
+            }
+          : {}),
+      } as Includeable;
     }
 
-    const items = Array.isArray(include) ? include : [include];
+    if (
+      mappedInclude &&
+      !relation.fields?.length &&
+      relation.required === undefined &&
+      !relation.nested
+    ) {
+      return mappedInclude;
+    }
 
-    return items.map((item) => {
-      if (typeof item === 'string') {
-        return includeMap?.[item] ?? item;
-      }
-
-      return item as unknown as Includeable;
-    });
+    return {
+      association: relation.path,
+      ...(relation.fields?.length ? { attributes: relation.fields } : {}),
+      ...(relation.required !== undefined ? { required: relation.required } : {}),
+      ...(relation.nested
+        ? {
+            include: normalizeRelationDirectives(relation.nested).map((nested) =>
+              this.buildIncludeable(nested, includeMap),
+            ),
+          }
+        : {}),
+    } as Includeable;
   }
 
   private buildAttributes(

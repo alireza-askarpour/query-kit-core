@@ -1,4 +1,4 @@
-import { NormalizedCondition } from '../../core';
+import { NormalizedCondition, RelationDefinition } from '../../core';
 import { SqlDialect } from '../sql-dialects';
 
 export interface TypeOrmQueryBuilderLike {
@@ -14,10 +14,11 @@ export interface TypeOrmQueryBuilderLike {
   andHaving?(condition: string, parameters?: Record<string, unknown>): this;
   leftJoin(path: string, alias: string): this;
   leftJoinAndSelect(path: string, alias: string): this;
+  innerJoin?(path: string, alias: string): this;
+  innerJoinAndSelect?(path: string, alias: string): this;
 }
 
-export interface TypeOrmJoinDefinition {
-  path: string;
+export interface TypeOrmJoinDefinition extends RelationDefinition {
   alias?: string;
   select?: boolean;
 }

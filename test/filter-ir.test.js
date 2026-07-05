@@ -9,6 +9,7 @@ const {
   getRelations,
   getSorting,
   getSqlFilterFeatures,
+  normalizeRelationDirectives,
 } = require('../dist/core/types/filter-ir.interface.js');
 
 test('createFilterIR exposes neutral and legacy-compatible views', () => {
@@ -64,4 +65,34 @@ test('IR helpers read legacy-shaped objects for compatibility', () => {
   assert.equal(getPagination(legacyFilter).limit, 20);
   assert.deepEqual(getProjectionFields(legacyFilter), ['id']);
   assert.deepEqual(getRelations(legacyFilter), ['profile']);
+});
+
+test('normalizeRelationDirectives expands strings and nested relation objects', () => {
+  assert.deepEqual(
+    normalizeRelationDirectives([
+      'profile',
+      {
+        path: 'orders',
+        fields: ['id', 'total'],
+        required: true,
+        nested: [{ path: 'items', fields: ['sku'] }],
+      },
+    ]),
+    [
+      { path: 'profile', fields: undefined, nested: undefined, required: undefined },
+      {
+        path: 'orders',
+        fields: ['id', 'total'],
+        required: true,
+        nested: [
+          {
+            path: 'items',
+            fields: ['sku'],
+            nested: undefined,
+            required: undefined,
+          },
+        ],
+      },
+    ],
+  );
 });

@@ -238,6 +238,64 @@ test('mongoose adapter builds aggregation pipeline', () => {
   ]);
 });
 
+test('mongoose adapter converts neutral relation definitions to populate objects', () => {
+  const adapter = new MongooseAdapter();
+  const model = new MockModel();
+
+  adapter.convert(
+    {
+      relationLoad: [
+        {
+          path: 'profile',
+          fields: ['name', 'email'],
+        },
+        {
+          path: 'orders',
+          nested: [
+            {
+              path: 'items',
+              fields: ['sku'],
+            },
+          ],
+        },
+      ],
+    },
+    { model },
+  );
+
+  assert.deepEqual(model.calls[0].query.populateCalls[0], [
+    {
+      path: 'profile',
+      select: 'name email',
+    },
+    {
+      path: 'orders',
+      populate: [
+        {
+          path: 'items',
+          select: 'sku',
+        },
+      ],
+    },
+  ]);
+});
+
+test('mongoose adapter fails fast on required relation definitions', () => {
+  const adapter = new MongooseAdapter();
+  const model = new MockModel();
+
+  assert.throws(
+    () =>
+      adapter.convert(
+        {
+          relationLoad: [{ path: 'profile', required: true }],
+        },
+        { model },
+      ),
+    /does not support required relations with populate/,
+  );
+});
+
 test('mongoose adapter supports grouping without metrics and applies having', () => {
   const adapter = new MongooseAdapter();
   const model = new MockModel();

@@ -5,8 +5,10 @@ import {
   FilterIR,
   getPagination,
   getRelations,
+  normalizeRelationDirectives,
   NormalizedCaseExpression,
   NormalizedSort,
+  RelationDefinition,
 } from '../../core';
 import {
   TypeOrmAdapterOptions,
@@ -117,25 +119,15 @@ export function applyIncludes<TQueryBuilder extends TypeOrmQueryBuilderLike>(
     return;
   }
 
-  const items = Array.isArray(include) ? include : [include];
   const joinedAliases = new Set<string>();
 
-  items.forEach((item) => {
-    if (typeof item !== 'string') {
-      return;
-    }
-
-    const mappedJoin = options.includeMap?.[item];
-    if (mappedJoin) {
-      applyMappedJoin(queryBuilder, mappedJoin, joinedAliases);
-      return;
-    }
-
-    applyIncludePath(
+  normalizeRelationDirectives(include).forEach((relation) => {
+    applyRelationDefinition(
       queryBuilder,
-      item,
+      relation,
       options.rootAlias ?? 'entity',
       joinedAliases,
+      options,
     );
   });
 }
@@ -255,44 +247,147 @@ export function escapeLiteral(value: unknown): string {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function applyRelationDefinition<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+  queryBuilder: TQueryBuilder,
+  relation: RelationDefinition,
+  parentAlias: string,
+  joinedAliases: Set<string>,
+  options: TypeOrmAdapterOptions<TQueryBuilder>,
+): void {
+  const mappedJoin = options.includeMap?.[relation.path];
+
+  if (mappedJoin) {
+    applyMappedJoin(
+      queryBuilder,
+      {
+        ...mappedJoin,
+        fields: relation.fields ?? mappedJoin.fields,
+        nested: relation.nested ?? mappedJoin.nested,
+        required: relation.required ?? mappedJoin.required,
+      },
+      joinedAliases,
+      options,
+    );
+    return;
+  }
+
+  applyIncludePath(queryBuilder, relation, parentAlias, joinedAliases, options);
+}
+
 function applyMappedJoin<TQueryBuilder extends TypeOrmQueryBuilderLike>(
   queryBuilder: TQueryBuilder,
   join: TypeOrmJoinDefinition,
   joinedAliases: Set<string>,
+  options: TypeOrmAdapterOptions<TQueryBuilder>,
 ): void {
   const alias = join.alias ?? defaultJoinAlias(join.path);
 
-  if (joinedAliases.has(alias)) {
-    return;
+  if (!joinedAliases.has(alias)) {
+    applyJoin(queryBuilder, join.path, alias, join, options.rootAlias ?? 'entity');
+    joinedAliases.add(alias);
   }
 
-  if (join.select === false) {
-    queryBuilder.leftJoin(join.path, alias);
-  } else {
-    queryBuilder.leftJoinAndSelect(join.path, alias);
-  }
-
-  joinedAliases.add(alias);
+  applyRelationFieldSelection(queryBuilder, alias, join.fields);
+  normalizeRelationDirectives(join.nested).forEach((nested) => {
+    applyRelationDefinition(queryBuilder, nested, alias, joinedAliases, options);
+  });
 }
 
 function applyIncludePath<TQueryBuilder extends TypeOrmQueryBuilderLike>(
   queryBuilder: TQueryBuilder,
-  includePath: string,
+  relation: RelationDefinition,
   rootAlias: string,
   joinedAliases: Set<string>,
+  options: TypeOrmAdapterOptions<TQueryBuilder>,
 ): void {
-  const segments = includePath.split('.');
+  const segments = relation.path.split('.');
   let currentAlias = rootAlias;
+  let currentJoinPath = '';
+  let finalAlias = rootAlias;
 
-  segments.forEach((segment) => {
+  segments.forEach((segment, index) => {
+    const joinPath = currentJoinPath ? `${currentJoinPath}.${segment}` : `${currentAlias}.${segment}`;
     const nextAlias = `${currentAlias}_${segment}`;
 
     if (!joinedAliases.has(nextAlias)) {
-      queryBuilder.leftJoinAndSelect(`${currentAlias}.${segment}`, nextAlias);
+      applyJoin(
+        queryBuilder,
+        joinPath,
+        nextAlias,
+        {
+          required: index === segments.length - 1 ? relation.required : false,
+          select:
+            index === segments.length - 1
+              ? relation.fields?.length
+                ? false
+                : true
+              : true,
+        },
+        rootAlias,
+      );
       joinedAliases.add(nextAlias);
     }
 
     currentAlias = nextAlias;
+    currentJoinPath = nextAlias;
+    finalAlias = nextAlias;
+  });
+
+  applyRelationFieldSelection(queryBuilder, finalAlias, relation.fields);
+  normalizeRelationDirectives(relation.nested).forEach((nested) => {
+    applyRelationDefinition(queryBuilder, nested, finalAlias, joinedAliases, options);
+  });
+}
+
+function applyJoin<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+  queryBuilder: TQueryBuilder,
+  path: string,
+  alias: string,
+  relation: Pick<TypeOrmJoinDefinition, 'required' | 'select'>,
+  rootAlias: string,
+): void {
+  const joinPath = path.includes('.') ? path : `${rootAlias}.${path}`;
+  const shouldSelect = relation.select !== false;
+
+  if (relation.required) {
+    if (shouldSelect) {
+      if (!queryBuilder.innerJoinAndSelect) {
+        throw new Error(
+          'TypeORM query builder must expose innerJoinAndSelect() for required relations.',
+        );
+      }
+      queryBuilder.innerJoinAndSelect?.(joinPath, alias);
+      return;
+    }
+
+    if (!queryBuilder.innerJoin) {
+      throw new Error(
+        'TypeORM query builder must expose innerJoin() for required relations.',
+      );
+    }
+    queryBuilder.innerJoin?.(joinPath, alias);
+    return;
+  }
+
+  if (shouldSelect) {
+    queryBuilder.leftJoinAndSelect(joinPath, alias);
+    return;
+  }
+
+  queryBuilder.leftJoin(joinPath, alias);
+}
+
+function applyRelationFieldSelection<TQueryBuilder extends TypeOrmQueryBuilderLike>(
+  queryBuilder: TQueryBuilder,
+  alias: string,
+  fields?: string[],
+): void {
+  if (!fields?.length) {
+    return;
+  }
+
+  fields.forEach((field) => {
+    queryBuilder.addSelect(`${alias}.${field}`);
   });
 }
 

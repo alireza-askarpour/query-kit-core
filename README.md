@@ -122,6 +122,41 @@ Supported aggregation directives in built-in formats:
 - `TypeOrmAdapter`
 - `FilterModule`
 
+## Relation loading contract
+
+Neutral relation loading now supports:
+
+- `path`
+- `fields`
+- `nested`
+- `required`
+
+Notes:
+
+- `required` is supported by SQL adapters through join semantics.
+- `Mongoose` fail-fast rejects `required` on `populate()` because Mongo populate does not provide true join-required semantics.
+
+Example:
+
+```ts
+const result = processor.processWith({
+  query: {
+    filterString: 'status:eq:active',
+    relations: [
+      { path: 'profile', fields: ['name', 'email'] },
+      {
+        path: 'orders',
+        required: true,
+        nested: [{ path: 'items', fields: ['sku'] }],
+      },
+    ],
+  },
+  adapterOptions: {
+    model: UserModel,
+  },
+});
+```
+
 ## Supported operators
 
 Current normalized operators:

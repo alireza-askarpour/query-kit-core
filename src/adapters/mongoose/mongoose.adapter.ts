@@ -12,8 +12,10 @@ import {
   getRelations,
   getSorting,
   hasComplexLogicalExpression,
+  normalizeRelationDirectives,
   NormalizedCondition,
   QueryAdapter,
+  RelationDefinition,
 } from '../../core';
 
 export interface MongoosePopulateDefinition {
@@ -370,37 +372,84 @@ export class MongooseAdapter
     relationLoad: ReturnType<typeof getRelations>,
     populateMap?: Record<string, MongoosePopulateDefinition | string>,
   ): Array<string | MongoosePopulateDefinition> {
-    if (!relationLoad) {
-      return [];
-    }
-
-    const items = Array.isArray(relationLoad) ? relationLoad : [relationLoad];
-
-    return items.map((item) => {
-      if (typeof item !== 'string') {
-        if (this.isPopulateDefinition(item)) {
-          return item;
-        }
-
-        throw new Error(
-          'Invalid populate definition. Object-based relationLoad entries must include a "path" field.',
-        );
-      }
-
-      return populateMap?.[item] ?? item;
-    });
+    return normalizeRelationDirectives(relationLoad).map((relation) =>
+      this.toPopulateDefinition(relation, populateMap),
+    );
   }
 
-  private isPopulateDefinition(
-    value: unknown,
-  ): value is MongoosePopulateDefinition {
-    return (
-      typeof value === 'object' &&
-      value !== null &&
-      'path' in value &&
-      typeof value.path === 'string' &&
-      value.path.length > 0
-    );
+  private toPopulateDefinition(
+    relation: RelationDefinition,
+    populateMap?: Record<string, MongoosePopulateDefinition | string>,
+  ): string | MongoosePopulateDefinition {
+    this.assertRelationSupport(relation);
+    const mapped = relation.path ? populateMap?.[relation.path] : undefined;
+
+    if (typeof mapped === 'string') {
+      if (!relation.fields?.length && !relation.nested) {
+        return mapped;
+      }
+
+      return {
+        path: mapped,
+        ...(relation.fields?.length
+          ? { select: relation.fields.join(' ') }
+          : {}),
+        ...(relation.nested
+          ? {
+              populate: normalizeRelationDirectives(relation.nested).map((item) =>
+                this.toPopulateDefinitionObject(item, populateMap),
+              ),
+            }
+          : {}),
+      };
+    }
+
+    if (mapped) {
+      return this.mergePopulateDefinitions(mapped, relation, populateMap);
+    }
+
+    if (!relation.fields?.length && !relation.nested) {
+      return relation.path;
+    }
+
+    return this.toPopulateDefinitionObject(relation, populateMap);
+  }
+
+  private toPopulateDefinitionObject(
+    relation: RelationDefinition,
+    populateMap?: Record<string, MongoosePopulateDefinition | string>,
+  ): MongoosePopulateDefinition {
+    this.assertRelationSupport(relation);
+    return {
+      path: relation.path,
+      ...(relation.fields?.length ? { select: relation.fields.join(' ') } : {}),
+      ...(relation.nested
+        ? {
+            populate: normalizeRelationDirectives(relation.nested).map((item) =>
+              this.toPopulateDefinitionObject(item, populateMap),
+            ),
+          }
+        : {}),
+    };
+  }
+
+  private mergePopulateDefinitions(
+    base: MongoosePopulateDefinition,
+    relation: RelationDefinition,
+    populateMap?: Record<string, MongoosePopulateDefinition | string>,
+  ): MongoosePopulateDefinition {
+    this.assertRelationSupport(relation);
+    return {
+      ...base,
+      ...(relation.fields?.length ? { select: relation.fields.join(' ') } : {}),
+      ...(relation.nested
+        ? {
+            populate: normalizeRelationDirectives(relation.nested).map((item) =>
+              this.toPopulateDefinitionObject(item, populateMap),
+            ),
+          }
+        : {}),
+    };
   }
 
   private getLimit(
@@ -411,6 +460,14 @@ export class MongooseAdapter
     const maxLimit = options.maxLimit ?? 1000;
 
     return Math.min(limit ?? defaultLimit, maxLimit);
+  }
+
+  private assertRelationSupport(relation: RelationDefinition): void {
+    if (relation.required) {
+      throw new Error(
+        'Mongoose adapter does not support required relations with populate(); use aggregation or remove "required".',
+      );
+    }
   }
 
   private getOffset(

@@ -203,3 +203,43 @@ test('sequelize adapter supports group by without metrics and renders having', (
   assert.equal(typeof result.having.val, 'string');
   assert.match(result.having.val, /SUM\("amount"\) > 100/);
 });
+
+test('sequelize adapter converts neutral relation definitions to include options', () => {
+  const adapter = new SequelizeAdapter();
+  const result = adapter.convert(
+    {
+      customInclude: [
+        {
+          path: 'profile',
+          fields: ['name', 'email'],
+          required: true,
+        },
+        {
+          path: 'orders',
+          nested: [{ path: 'items', fields: ['sku'] }],
+        },
+      ],
+    },
+    {
+      model: new MockModel('postgres'),
+      dialect: 'postgres',
+    },
+  );
+
+  assert.deepEqual(result.include, [
+    {
+      association: 'profile',
+      attributes: ['name', 'email'],
+      required: true,
+    },
+    {
+      association: 'orders',
+      include: [
+        {
+          association: 'items',
+          attributes: ['sku'],
+        },
+      ],
+    },
+  ]);
+});
