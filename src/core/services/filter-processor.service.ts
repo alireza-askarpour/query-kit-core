@@ -32,6 +32,26 @@ import {
 } from '../types';
 import { QueryAdapter } from '../contracts/query-adapter.interface';
 
+interface ValidationResultWithParsedQuery {
+  isValid: boolean;
+  errors: FilterValidationIssue[];
+  warnings: FilterValidationIssue[];
+  parsedQuery?: unknown;
+}
+
+interface ValidatorWithQuerySupport<TSchema = unknown> {
+  validateQuery?(
+    query: Query,
+    schema?: TSchema,
+    context?: unknown,
+  ): ValidationResultWithParsedQuery;
+}
+
+interface FormatWithParsedQuerySupport {
+  parse(query: Query): FilterIR;
+  buildFilterIrFromValidation?(parsedQuery: unknown, query: Query): FilterIR;
+}
+
 @Injectable()
 export class FilterProcessor {
   constructor(
@@ -75,7 +95,7 @@ export class FilterProcessor {
 
     const normalizedQuery = this.normalizeQuery(request.query);
     const rawValidation = this.validateQueryIfNeeded(
-      normalizedQuery.filterString,
+      normalizedQuery,
       formatName,
       request.pipeline,
     );
@@ -83,7 +103,11 @@ export class FilterProcessor {
 
     const formatRegistration = this.registry.getFormatRegistration(formatName);
     const format = formatRegistration.format;
-    const normalized = format.parse(normalizedQuery);
+    const normalized = this.resolveNormalizedFilter(
+      format,
+      normalizedQuery,
+      rawValidation.result?.parsedQuery,
+    );
     this.validateNormalizedQuery(normalized);
     this.validatePolicy(normalized, request.pipeline?.policy, request.pipeline?.validationContext);
     this.validateCapabilities(
@@ -165,7 +189,7 @@ export class FilterProcessor {
     }
 
     const rawValidation = this.validateQueryIfNeeded(
-      normalizedQuery.filterString,
+      normalizedQuery,
       formatName,
       request.pipeline,
     );
@@ -195,7 +219,11 @@ export class FilterProcessor {
 
     let normalized: FilterIR;
     try {
-      normalized = formatRegistration.format.parse(normalizedQuery);
+      normalized = this.resolveNormalizedFilter(
+        formatRegistration.format,
+        normalizedQuery,
+        rawValidation.result?.parsedQuery,
+      );
       appliedValidationRules.push({
         code: 'FORMAT_PARSE',
         stage: 'parsing',
@@ -391,17 +419,13 @@ export class FilterProcessor {
   }
 
   private validateQueryIfNeeded<TSchema>(
-    queryString: string,
+    query: Query,
     formatName: string,
     pipeline?: FilterProcessRequest<unknown, TSchema>['pipeline'],
   ): {
     shouldValidate: boolean;
     validatorRegistered: boolean;
-    result?: {
-      isValid: boolean;
-      errors: FilterValidationIssue[];
-      warnings: FilterValidationIssue[];
-    };
+    result?: ValidationResultWithParsedQuery;
   } {
     const shouldValidate =
       pipeline?.validate ?? this.runtimeOptions.enableValidation ?? false;
@@ -413,7 +437,15 @@ export class FilterProcessor {
       };
     }
 
-    const validator = this.registry.getValidator<TSchema>(formatName);
+    const validator = this.registry.getValidator<TSchema>(formatName) as
+      | (ValidatorWithQuerySupport<TSchema> & {
+          validate(
+            queryString: string,
+            schema?: TSchema,
+            context?: unknown,
+          ): ValidationResultWithParsedQuery;
+        })
+      | undefined;
 
     if (!validator) {
       return {
@@ -422,11 +454,18 @@ export class FilterProcessor {
       };
     }
 
-    const result = validator.validate(
-      queryString,
-      pipeline?.schema,
-      pipeline?.validationContext,
-    );
+    const result =
+      !this.shouldDisableValidationReuse() && validator.validateQuery
+        ? validator.validateQuery(
+            query,
+            pipeline?.schema,
+            pipeline?.validationContext,
+          )
+        : validator.validate(
+            query.filterString,
+            pipeline?.schema,
+            pipeline?.validationContext,
+          );
 
     return {
       shouldValidate,
@@ -435,8 +474,25 @@ export class FilterProcessor {
         isValid: result.isValid,
         errors: result.errors,
         warnings: result.warnings,
+        parsedQuery: result.parsedQuery,
       },
     };
+  }
+
+  private resolveNormalizedFilter(
+    format: FormatWithParsedQuerySupport,
+    query: Query,
+    parsedQuery?: unknown,
+  ): FilterIR {
+    if (
+      parsedQuery !== undefined &&
+      !this.shouldDisableValidationReuse() &&
+      format.buildFilterIrFromValidation
+    ) {
+      return format.buildFilterIrFromValidation(parsedQuery, query);
+    }
+
+    return format.parse(query);
   }
 
   private validateCapabilities(
@@ -762,5 +818,9 @@ export class FilterProcessor {
     }
 
     return Array.isArray(relations) ? relations.length : 1;
+  }
+
+  private shouldDisableValidationReuse(): boolean {
+    return process.env.QUERY_REQUEST_DISABLE_VALIDATION_PARSE_REUSE === '1';
   }
 }

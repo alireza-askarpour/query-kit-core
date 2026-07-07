@@ -8,7 +8,10 @@ import {
   DEFAULT_MC_VALIDATION_OPTIONS,
   MC_OPERATOR_ALIASES,
 } from './mc-format-validation.constants';
-import { parseMongoQueryString } from './mc-format-validation.parser';
+import {
+  MongoParsedQueryDocument,
+  parseMongoQueryDocument,
+} from './mc-format-validation.parser';
 import {
   getAllowedMongoOperatorsForType,
   getMongoValidOperatorsList,
@@ -74,6 +77,14 @@ export class MCFormatValidator
     schema?: Record<string, MongoFieldSchema>,
     context?: ValidationContext,
   ): MongoValidationResult {
+    return this.validateQuery({ filterString: queryString }, schema, context);
+  }
+
+  validateQuery(
+    query: { filterString: string },
+    schema?: Record<string, MongoFieldSchema>,
+    context?: ValidationContext,
+  ): MongoValidationResult {
     const errors: MongoValidationError[] = [];
     const warnings: MongoValidationError[] = [];
     const validationContext = resolveValidationContext(
@@ -82,17 +93,17 @@ export class MCFormatValidator
     );
     const effectiveSchema = this.resolveSchema(schema);
 
-    if (!queryString || queryString.trim() === '') {
+    if (!query.filterString || query.filterString.trim() === '') {
       return this.createEmptyResult();
     }
 
-    const conditions = parseMongoQueryString(queryString, {
+    const parsedQuery = parseMongoQueryDocument(query.filterString, {
       normalizeOperator: this.normalizeOperator.bind(this),
       validateDateFormat: validateMongoDateFormat,
       parseObjectLiteral: this.parseObjectLiteral.bind(this),
     });
     const aggregationValidation = this.validateAggregationDirectives(
-      queryString,
+      parsedQuery,
       effectiveSchema,
       validationContext,
     );
@@ -100,7 +111,7 @@ export class MCFormatValidator
     warnings.push(...aggregationValidation.warnings);
 
     if (
-      conditions.length + aggregationValidation.havingConditionCount >
+      parsedQuery.conditions.length + aggregationValidation.havingConditionCount >
       (this.options.maxConditions ?? 50)
     ) {
       errors.push({
@@ -112,7 +123,7 @@ export class MCFormatValidator
 
     const sanitizedConditions: MongoSanitizedCondition[] = [];
 
-    conditions.forEach((condition, index) => {
+    parsedQuery.conditions.forEach((condition, index) => {
       const result = this.validateCondition(
         condition,
         effectiveSchema,
@@ -133,7 +144,8 @@ export class MCFormatValidator
       warnings,
       sanitizedConditions,
       sanitized: sanitizedConditions,
-    };
+      parsedQuery,
+    } as MongoValidationResult & { parsedQuery: MongoParsedQueryDocument };
   }
 
   private validateCondition(
@@ -340,7 +352,7 @@ export class MCFormatValidator
   }
 
   private validateAggregationDirectives(
-    queryString: string,
+    parsedQuery: MongoParsedQueryDocument,
     schema?: Record<string, MongoFieldSchema>,
     context?: ValidationContext,
   ): {
@@ -352,18 +364,8 @@ export class MCFormatValidator
     const warnings: MongoValidationError[] = [];
     const metrics: Array<{ field?: string; operator: string; alias?: string }> = [];
     const groupByFields: string[] = [];
-    const rawHavingConditions: string[] = [];
-
-    const parts = queryString
-      .split(/(?<!\\);/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-    parts.forEach((part) => {
-      if (!part.startsWith('@')) {
-        return;
-      }
-
+ 
+    parsedQuery.directiveSegments.forEach((part: string) => {
       const [rawDirective, ...rawValueParts] = part.split(/(?<!\\):/);
       const directive = rawDirective.slice(1).trim().toLowerCase();
       const value = rawValueParts.join(':').trim();
@@ -381,7 +383,6 @@ export class MCFormatValidator
             );
             break;
           case 'having':
-            rawHavingConditions.push(value);
             break;
           default:
             break;
@@ -421,17 +422,18 @@ export class MCFormatValidator
 
     const havingSchema = this.createHavingSchema(schema, groupByFields, metrics);
 
-    rawHavingConditions.forEach((rawHaving, index) => {
-      const parsed = this.parseDirectiveCondition(rawHaving);
+    parsedQuery.parsedHavingConditions.forEach(
+      (parsed: MongoParsedCondition, index: number) => {
       const result = this.validateCondition(parsed, havingSchema, index, context);
       errors.push(...result.errors);
       warnings.push(...result.warnings);
-    });
+      },
+    );
 
     return {
       errors,
       warnings,
-      havingConditionCount: rawHavingConditions.length,
+      havingConditionCount: parsedQuery.parsedHavingConditions.length,
     };
   }
 

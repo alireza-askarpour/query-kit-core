@@ -18,6 +18,7 @@ import {
   parseGroupByDirective,
   parseHavingDirective,
 } from '../aggregation-directive.utils';
+import type { MongoParsedQueryDocument } from './mc-format-validation.parser';
 
 @Injectable()
 export class MCFormat implements FilterFormat {
@@ -97,6 +98,107 @@ export class MCFormat implements FilterFormat {
 
       conditions.push(this.parseCondition(segment));
     });
+
+    return createFilterIR({
+      predicates: conditions,
+      sorting: directives.sort,
+      pagination: {
+        limit: directives.limit,
+        page: directives.page,
+        offset: directives.offset,
+      },
+      projection: directives.fields ? { fields: directives.fields } : undefined,
+      relations: directives.relationLoad,
+      customInclude: directives.customInclude,
+      aggregation: buildAggregationDefinition(
+        aggregationMetrics,
+        directives.groupBy,
+        directives.having,
+      ),
+    });
+  }
+
+  buildFilterIrFromValidation(parsedQuery: MongoParsedQueryDocument, query: Query) {
+    const filterString = query.filterString?.trim() ?? '';
+
+    if (!filterString) {
+      return this.parse(query);
+    }
+
+    const conditions: NormalizedCondition[] = [];
+    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
+    const directives = {
+      sort: this.parseSortDirective(query.sortString),
+      limit: query.size,
+      page: query.page,
+      offset: query.offset,
+      fields: query.fields ? [...query.fields] : undefined,
+      relationLoad: query.relations ?? query.customInclude,
+      customInclude: query.customInclude,
+      groupBy: undefined as string[] | undefined,
+      having: [] as import('../../core').FilterPredicate[],
+    };
+    let havingIndex = 0;
+
+    for (const condition of parsedQuery.filterConditions) {
+      conditions.push(this.normalizeParsedCondition(condition));
+    }
+
+    for (const segment of parsedQuery.directiveSegments) {
+      const [rawName, ...rawValueParts] = this.splitByUnescapedColon(segment);
+      const name = rawName.slice(1).trim().toLowerCase();
+      const value = rawValueParts.join(':').trim();
+
+      switch (name) {
+        case 'sort':
+          directives.sort = this.parseSortDirective(value);
+          break;
+        case 'limit':
+          directives.limit = this.parseInteger(value, '@limit', false);
+          break;
+        case 'page':
+          directives.page = this.parseInteger(value, '@page', false);
+          break;
+        case 'offset':
+          directives.offset = this.parseInteger(value, '@offset', true);
+          break;
+        case 'fields':
+          directives.fields = this.parseList(value, '@fields');
+          break;
+        case 'populate':
+        case 'include':
+          directives.relationLoad = this.parseList(value, `@${name}`);
+          directives.customInclude = directives.relationLoad;
+          break;
+        case 'aggregate':
+          aggregationMetrics.push(
+            ...parseAggregationDirective(
+              value,
+              this.parseList.bind(this),
+              '@aggregate',
+            ),
+          );
+          break;
+        case 'groupby':
+          directives.groupBy = parseGroupByDirective(
+            value,
+            this.parseList.bind(this),
+            '@groupBy',
+          );
+          break;
+        case 'having': {
+          const parsedHaving = parsedQuery.parsedHavingConditions[havingIndex];
+          if (!parsedHaving) {
+            throw new BadRequestException('Missing parsed @having condition');
+          }
+          directives.having.push(this.normalizeParsedCondition(parsedHaving));
+          havingIndex += 1;
+          break;
+        }
+        default:
+          throw new BadRequestException(`Unsupported directive "${rawName}"`);
+      }
+    }
 
     return createFilterIR({
       predicates: conditions,
@@ -216,6 +318,25 @@ export class MCFormat implements FilterFormat {
       field: resolvedField,
       operator,
       value: this.parseValue(rawValue, operator, resolvedField),
+    };
+  }
+
+  private normalizeParsedCondition(condition: {
+    field?: string;
+    operator?: string;
+    rawValue?: string;
+  }): NormalizedCondition {
+    if (!condition.field || !condition.operator || condition.rawValue === undefined) {
+      throw new BadRequestException('Invalid parsed Mongo condition');
+    }
+
+    const operator = condition.operator as FilterOperator;
+    const resolvedField = condition.field.trim();
+
+    return {
+      field: resolvedField,
+      operator,
+      value: this.parseValue(condition.rawValue, operator, resolvedField),
     };
   }
 

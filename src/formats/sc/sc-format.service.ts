@@ -23,6 +23,11 @@ import {
   RawExpressionNode,
   splitTopLevelSegments,
 } from './sc-logical-expression.parser';
+import type {
+  ParsedCaseExpressionNode,
+  ParsedExpressionNode,
+  ParsedQueryDocument,
+} from './sc-format-validation.parser';
 import {
   buildAggregationDefinition,
   parseAggregationDirective,
@@ -265,6 +270,147 @@ export class SCFormat implements FilterFormat {
     });
   }
 
+  buildFilterIrFromValidation(parsedQuery: ParsedQueryDocument, query: Query) {
+    const filterString = query.filterString?.trim() ?? '';
+
+    if (!filterString) {
+      return this.parse(query);
+    }
+
+    const conditions: NormalizedCondition[] = [];
+    const caseExpressions = parsedQuery.caseExpressions.map((expression) =>
+      this.buildCaseExpressionFromParsed(expression),
+    );
+    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
+    const directives = {
+      sort: [] as NormalizedSort[],
+      limit: query.size,
+      page: query.page,
+      offset: query.offset,
+      fields: query.fields ? [...query.fields] : undefined,
+      relationLoad: query.relations ?? query.customInclude,
+      include: query.customInclude,
+      groupBy: undefined as string[] | undefined,
+      having: [] as import('../../core').FilterPredicate[],
+    };
+    let havingIndex = 0;
+
+    for (const segment of parsedQuery.directiveSegments) {
+      const [directiveName, ...rawValueParts] = this.splitByUnescapedColon(segment);
+      const name = directiveName.slice(1).trim().toLowerCase();
+      const value = rawValueParts.join(':').trim();
+
+      switch (name) {
+        case 'sort':
+          directives.sort = this.parseSortDirective(value);
+          break;
+        case 'limit':
+          directives.limit = this.parsePositiveInteger(value, '@limit');
+          break;
+        case 'page':
+          directives.page = this.parsePositiveInteger(value, '@page');
+          break;
+        case 'offset':
+          directives.offset = this.parseNonNegativeInteger(value, '@offset');
+          break;
+        case 'fields':
+          directives.fields = this.parseCommaSeparatedList(value, '@fields');
+          break;
+        case 'include':
+          directives.relationLoad = this.parseCommaSeparatedList(value, '@include');
+          directives.include = directives.relationLoad;
+          break;
+        case 'aggregate':
+          aggregationMetrics.push(
+            ...parseAggregationDirective(
+              value,
+              this.parseCommaSeparatedList.bind(this),
+              '@aggregate',
+            ),
+          );
+          break;
+        case 'groupby':
+          directives.groupBy = parseGroupByDirective(
+            value,
+            this.parseCommaSeparatedList.bind(this),
+            '@groupBy',
+          );
+          break;
+        case 'having': {
+          const parsedHaving = parsedQuery.parsedHavingConditions[havingIndex];
+          if (!parsedHaving) {
+            throw new BadRequestException('Missing parsed @having condition');
+          }
+          directives.having.push(this.normalizeParsedCondition(parsedHaving));
+          havingIndex += 1;
+          break;
+        }
+        default:
+          throw new BadRequestException(`Unsupported directive "${directiveName}"`);
+      }
+    }
+
+    if (parsedQuery.expression) {
+      const expression = this.mapParsedExpression(parsedQuery.expression);
+      conditions.push(...getPredicates({ predicates: [], expression }));
+
+      return createFilterIR({
+        predicates: conditions,
+        expression,
+        sorting: directives.sort.length
+          ? directives.sort
+          : this.parseSort(query.sortString),
+        pagination: {
+          limit: directives.limit,
+          page: directives.page,
+          offset: directives.offset,
+        },
+        projection: directives.fields ? { fields: directives.fields } : undefined,
+        relations: directives.relationLoad,
+        customInclude: directives.include,
+        extensions: {
+          sql: {
+            caseExpressions,
+          },
+        },
+        aggregation: buildAggregationDefinition(
+          aggregationMetrics,
+          directives.groupBy,
+          directives.having,
+        ),
+      });
+    }
+
+    for (const condition of parsedQuery.filterConditions) {
+      conditions.push(this.normalizeParsedCondition(condition));
+    }
+
+    return createFilterIR({
+      predicates: conditions,
+      sorting: directives.sort.length
+        ? directives.sort
+        : this.parseSort(query.sortString),
+      pagination: {
+        limit: directives.limit,
+        page: directives.page,
+        offset: directives.offset,
+      },
+      projection: directives.fields ? { fields: directives.fields } : undefined,
+      relations: directives.relationLoad,
+      customInclude: directives.include,
+      extensions: {
+        sql: {
+          caseExpressions,
+        },
+      },
+      aggregation: buildAggregationDefinition(
+        aggregationMetrics,
+        directives.groupBy,
+        directives.having,
+      ),
+    });
+  }
+
   private splitSegments(queryString: string): string[] {
     return splitTopLevelSegments(queryString)
       .map((segment) => segment.replace(/\\;/g, ';').trim())
@@ -332,8 +478,75 @@ export class SCFormat implements FilterFormat {
     }
   }
 
+  private mapParsedExpression(
+    parsedExpression: ParsedExpressionNode,
+  ): FilterExpressionNode {
+    switch (parsedExpression.kind) {
+      case 'predicate':
+        return createPredicateNode(
+          this.normalizeParsedCondition(parsedExpression.predicate),
+        );
+      case 'not':
+        return createNotNode(this.mapParsedExpression(parsedExpression.child));
+      case 'group':
+        return createLogicalGroupNode(
+          parsedExpression.operator,
+          parsedExpression.children.map((child) =>
+            this.mapParsedExpression(child),
+          ),
+        );
+    }
+  }
+
+  private buildCaseExpressionFromParsed(
+    expression: ParsedCaseExpressionNode,
+  ): NormalizedCaseExpression {
+    if (expression.error) {
+      throw new BadRequestException(expression.error);
+    }
+
+    if (!expression.outputField) {
+      throw new BadRequestException(
+        'CASE expression requires an output field: case:outputField',
+      );
+    }
+
+    return {
+      outputField: expression.outputField,
+      cases: expression.cases.map((entry) => ({
+        when: this.normalizeParsedCondition(entry.condition),
+        then: this.parsePrimitive(entry.thenRawValue),
+      })),
+      elseValue:
+        expression.elseRawValue !== undefined
+          ? this.parsePrimitive(expression.elseRawValue)
+          : undefined,
+    };
+  }
+
   private isDirective(segment: string): boolean {
     return segment.startsWith('@');
+  }
+
+  private normalizeParsedCondition(condition: {
+    field?: string;
+    operator?: string;
+    rawValue?: string;
+  }): NormalizedCondition {
+    if (!condition.field || !condition.operator || condition.rawValue === undefined) {
+      throw new BadRequestException('Invalid parsed condition');
+    }
+
+    const operator = condition.operator as FilterOperator;
+    const resolvedField = this.unescapeSegment(condition.field.trim());
+    const normalizedCondition = {
+      field: resolvedField,
+      operator,
+      value: this.parseValue(condition.rawValue.trim(), operator, resolvedField),
+    };
+
+    this.validateCondition(normalizedCondition);
+    return normalizedCondition;
   }
 
   private applyDirective(

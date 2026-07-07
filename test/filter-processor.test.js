@@ -81,6 +81,62 @@ class CapabilityFormat {
   }
 }
 
+class ReusableParsedFormat {
+  constructor() {
+    this.name = 'reusable';
+    this.parseCalls = 0;
+    this.buildCalls = 0;
+  }
+
+  parse() {
+    this.parseCalls += 1;
+    return createFilterIR({
+      predicates: [{ field: 'fallback', operator: 'eq', value: 'fallback' }],
+    });
+  }
+
+  buildFilterIrFromValidation(parsedQuery) {
+    this.buildCalls += 1;
+    return createFilterIR({
+      predicates: [
+        {
+          field: parsedQuery.field,
+          operator: parsedQuery.operator,
+          value: parsedQuery.value,
+        },
+      ],
+    });
+  }
+}
+
+class ReusableParsedValidator {
+  constructor() {
+    this.formatName = 'reusable';
+  }
+
+  validateQuery(queryStringOrQuery) {
+    const filterString =
+      typeof queryStringOrQuery === 'string'
+        ? queryStringOrQuery
+        : queryStringOrQuery.filterString;
+
+    return {
+      isValid: true,
+      errors: [],
+      warnings: [],
+      parsedQuery: {
+        field: 'status',
+        operator: 'eq',
+        value: filterString,
+      },
+    };
+  }
+
+  validate(queryString) {
+    return this.validateQuery(queryString);
+  }
+}
+
 function createRegistry({ validator } = {}) {
   const registry = new FilterRegistry();
   registry.registerFormatRegistration({
@@ -157,6 +213,33 @@ test('processWith validates when enabled and validator exists', () => {
       context: undefined,
     },
   ]);
+});
+
+test('processWith reuses parsed validation output when format supports it', () => {
+  const registry = new FilterRegistry();
+  const format = new ReusableParsedFormat();
+  registry.registerFormatRegistration({
+    format,
+    validator: new ReusableParsedValidator(),
+  });
+
+  const adapter = new MockAdapter();
+  registry.registerAdapter(adapter);
+
+  const processor = new FilterProcessor(registry, {
+    defaultFormat: 'reusable',
+    defaultOrm: 'mock',
+    enableValidation: true,
+  });
+
+  const result = processor.processWith({
+    query: 'status:eq:active',
+  });
+
+  assert.equal(format.parseCalls, 0);
+  assert.equal(format.buildCalls, 1);
+  assert.equal(result.normalized.conditions[0].field, 'status');
+  assert.equal(result.normalized.conditions[0].value, 'status:eq:active');
 });
 
 test('processWith skips validation cleanly when validator is not registered', () => {
