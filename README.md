@@ -1,10 +1,10 @@
-# query-request
+# query-kit-core
 
 Extensible query filter parsing, validation, and ORM adapter pipeline for NestJS applications.
 
 ## Overview
 
-`query-request` is a library-oriented package for turning query-string filters into a neutral filter IR and then converting that IR into ORM-specific query shapes.
+`query-kit-core` is a library-oriented package for turning query-string filters into a neutral filter IR and then converting that IR into ORM-specific query shapes.
 
 The project is built around three concepts:
 
@@ -64,13 +64,13 @@ More detailed documentation:
 ## Installation
 
 ```bash
-pnpm add query-request
+pnpm add query-kit-core
 ```
 
 ## Quick example
 
 ```ts
-import { FilterProcessor, FilterRegistry, SCFormat, SequelizeAdapter } from 'query-request';
+import { FilterProcessor, FilterRegistry, SCFormat, SequelizeAdapter } from 'query-kit-core';
 
 const registry = new FilterRegistry();
 registry.registerFormat(new SCFormat());
@@ -261,7 +261,7 @@ You can add new operators without changing the package core by registering forma
 import {
   registerFilterOperatorBundle,
   registerAdapterOperator,
-} from 'query-request';
+} from 'query-kit-core';
 
 registerFilterOperatorBundle({
   operator: 'jsonContains',
