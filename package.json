@@ -40,8 +40,8 @@
     "typeorm",
     "adapter"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Alireza Askarpour",
+  "license": "MIT",
   "packageManager": "pnpm@10.22.0",
   "engines": {
     "node": ">=20"
