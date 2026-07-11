@@ -8,7 +8,6 @@ import {
   FilterFormat,
   FilterExpressionNode,
   FilterOperator,
-  getPredicates,
   NormalizedCaseExpression,
   NormalizedCondition,
   NormalizedSort,
@@ -18,16 +17,13 @@ import {
   getDefaultFilterOperatorRegistry,
   normalizeOperatorValidationOutcome,
 } from '../../core';
-import {
-  parseRawLogicalExpression,
-  RawExpressionNode,
-  splitTopLevelSegments,
-} from './sc-logical-expression.parser';
+import { splitTopLevelSegments } from './sc-logical-expression.parser';
 import type {
   ParsedCaseExpressionNode,
   ParsedExpressionNode,
   ParsedQueryDocument,
 } from './sc-format-validation.parser';
+import { parseQueryDocument } from './sc-format-validation.parser';
 import {
   buildAggregationDefinition,
   parseAggregationDirective,
@@ -148,133 +144,22 @@ export class SCFormat implements FilterFormat {
     const filterString = query.filterString?.trim() ?? '';
 
     if (!filterString) {
-      return createFilterIR({
-        predicates: [],
-        sorting: this.parseSort(query.sortString),
-        pagination: {
-          limit: query.size,
-          page: query.page,
-          offset: query.offset,
-        },
-        projection: query.fields ? { fields: query.fields } : undefined,
-        relations: query.relations ?? query.customInclude,
-        customInclude: query.customInclude,
-        extensions: {
-          sql: {
-            caseExpressions: [],
-          },
-        },
-      });
+      return this.createEmptyFilterIr(query);
     }
 
-    const segments = this.splitSegments(filterString);
-    const conditions: NormalizedCondition[] = [];
-    const caseExpressions: NormalizedCaseExpression[] = [];
-    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
-    const expressionSegments: string[] = [];
-    const directives = {
-      sort: [] as NormalizedSort[],
-      limit: query.size,
-      page: query.page,
-      offset: query.offset,
-      fields: query.fields ? [...query.fields] : undefined,
-      relationLoad: query.relations ?? query.customInclude,
-      include: query.customInclude,
-      groupBy: undefined as string[] | undefined,
-      having: [] as import('../../core').FilterPredicate[],
-    };
-
-    for (let index = 0; index < segments.length; index += 1) {
-      const segment = segments[index];
-
-      if (this.isDirective(segment)) {
-        this.applyDirective(segment, directives, aggregationMetrics);
-        continue;
-      }
-
-      if (segment.startsWith('case:')) {
-        const { expression, nextIndex } = this.parseCaseExpression(
-          segments,
-          index,
-        );
-        caseExpressions.push(expression);
-        index = nextIndex;
-        continue;
-      }
-
-      expressionSegments.push(segment);
-    }
-
-    const expressionInput = expressionSegments.join(';');
-
-    if (this.containsLogicalSyntax(expressionInput)) {
-      const expression = this.parseLogicalExpression(expressionInput);
-      conditions.push(...getPredicates({ predicates: [], expression }));
-
-      return createFilterIR({
-        predicates: conditions,
-        expression,
-        sorting: directives.sort.length
-          ? directives.sort
-          : this.parseSort(query.sortString),
-        pagination: {
-          limit: directives.limit,
-          page: directives.page,
-          offset: directives.offset,
-        },
-        projection: directives.fields ? { fields: directives.fields } : undefined,
-        relations: directives.relationLoad,
-        customInclude: directives.include,
-        extensions: {
-          sql: {
-            caseExpressions,
-          },
-        },
-        aggregation: buildAggregationDefinition(
-          aggregationMetrics,
-          directives.groupBy,
-          directives.having,
-        ),
-      });
-    }
-
-    for (const segment of expressionSegments) {
-      const condition = this.parseCondition(segment);
-      this.validateCondition(condition);
-      conditions.push(condition);
-    }
-
-    return createFilterIR({
-      predicates: conditions,
-      sorting: directives.sort.length
-        ? directives.sort
-        : this.parseSort(query.sortString),
-      pagination: {
-        limit: directives.limit,
-        page: directives.page,
-        offset: directives.offset,
-      },
-      projection: directives.fields ? { fields: directives.fields } : undefined,
-      relations: directives.relationLoad,
-      customInclude: directives.include,
-      extensions: {
-        sql: {
-          caseExpressions,
-        },
-      },
-      aggregation: buildAggregationDefinition(
-        aggregationMetrics,
-        directives.groupBy,
-        directives.having,
-      ),
+    const parsedQuery = parseQueryDocument(filterString, {
+      normalizeOperator: this.normalizeOperator.bind(this),
+      validateDateFormat: (value: string) => this.validateFullDate('query', value),
     });
+
+    return this.buildFilterIrFromValidation(parsedQuery, query);
   }
 
   buildFilterIrFromValidation(parsedQuery: ParsedQueryDocument, query: Query) {
     const filterString = query.filterString?.trim() ?? '';
 
     if (!filterString) {
-      return this.parse(query);
+      return this.createEmptyFilterIr(query);
     }
 
     const conditions: NormalizedCondition[] = [];
@@ -351,8 +236,7 @@ export class SCFormat implements FilterFormat {
     }
 
     if (parsedQuery.expression) {
-      const expression = this.mapParsedExpression(parsedQuery.expression);
-      conditions.push(...getPredicates({ predicates: [], expression }));
+      const expression = this.mapParsedExpression(parsedQuery.expression, conditions);
 
       return createFilterIR({
         predicates: conditions,
@@ -411,88 +295,23 @@ export class SCFormat implements FilterFormat {
     });
   }
 
-  private splitSegments(queryString: string): string[] {
-    return splitTopLevelSegments(queryString)
-      .map((segment) => segment.replace(/\\;/g, ';').trim())
-      .filter(Boolean);
-  }
-
-  private containsLogicalSyntax(value: string): boolean {
-    let escaped = false;
-
-    for (const character of value) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (character === '\\') {
-        escaped = true;
-        continue;
-      }
-
-      if (character === '|' || character === '!' || character === '(' || character === ')') {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private parseLogicalExpression(input: string): FilterExpressionNode {
-    try {
-      const rawExpression = parseRawLogicalExpression(input);
-
-      if (!rawExpression) {
-        throw new BadRequestException('Logical expression cannot be empty');
-      }
-
-      return this.mapRawExpression(rawExpression);
-    } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-
-      throw new BadRequestException(
-        error instanceof Error ? error.message : 'Invalid logical expression',
-      );
-    }
-  }
-
-  private mapRawExpression(rawExpression: RawExpressionNode): FilterExpressionNode {
-    switch (rawExpression.kind) {
+  private mapParsedExpression(
+    parsedExpression: ParsedExpressionNode,
+    conditions: NormalizedCondition[],
+  ): FilterExpressionNode {
+    switch (parsedExpression.kind) {
       case 'predicate': {
-        const condition = this.parseCondition(rawExpression.raw);
-        this.validateCondition(condition);
+        const condition = this.normalizeParsedCondition(parsedExpression.predicate);
+        conditions.push(condition);
         return createPredicateNode(condition);
       }
       case 'not':
-        return createNotNode(this.mapRawExpression(rawExpression.child));
-      case 'group':
-        return createLogicalGroupNode(
-          rawExpression.operator,
-          rawExpression.children.map((child) => this.mapRawExpression(child)),
-        );
-      default:
-        return this.assertNeverRawExpression(rawExpression);
-    }
-  }
-
-  private mapParsedExpression(
-    parsedExpression: ParsedExpressionNode,
-  ): FilterExpressionNode {
-    switch (parsedExpression.kind) {
-      case 'predicate':
-        return createPredicateNode(
-          this.normalizeParsedCondition(parsedExpression.predicate),
-        );
-      case 'not':
-        return createNotNode(this.mapParsedExpression(parsedExpression.child));
+        return createNotNode(this.mapParsedExpression(parsedExpression.child, conditions));
       case 'group':
         return createLogicalGroupNode(
           parsedExpression.operator,
           parsedExpression.children.map((child) =>
-            this.mapParsedExpression(child),
+            this.mapParsedExpression(child, conditions),
           ),
         );
     }
@@ -528,6 +347,26 @@ export class SCFormat implements FilterFormat {
     return segment.startsWith('@');
   }
 
+  private createEmptyFilterIr(query: Query) {
+    return createFilterIR({
+      predicates: [],
+      sorting: this.parseSort(query.sortString),
+      pagination: {
+        limit: query.size,
+        page: query.page,
+        offset: query.offset,
+      },
+      projection: query.fields ? { fields: query.fields } : undefined,
+      relations: query.relations ?? query.customInclude,
+      customInclude: query.customInclude,
+      extensions: {
+        sql: {
+          caseExpressions: [],
+        },
+      },
+    });
+  }
+
   private normalizeParsedCondition(condition: {
     field?: string;
     operator?: string;
@@ -547,6 +386,28 @@ export class SCFormat implements FilterFormat {
 
     this.validateCondition(normalizedCondition);
     return normalizedCondition;
+  }
+
+  private parseDirectivePredicate(rawValue: string): {
+    field?: string;
+    operator?: string;
+    rawValue?: string;
+  } {
+    const [field, rawOperator, ...rawValueParts] = this.splitByUnescapedColon(
+      rawValue,
+    );
+
+    if (!field || !rawOperator || rawValueParts.length === 0) {
+      throw new BadRequestException(
+        `Invalid condition format: "${rawValue}". Expected field:operator:value`,
+      );
+    }
+
+    return {
+      field,
+      operator: this.normalizeOperator(rawOperator.trim()),
+      rawValue: rawValueParts.join(':').trim(),
+    };
   }
 
   private applyDirective(
@@ -586,7 +447,7 @@ export class SCFormat implements FilterFormat {
         break;
       case 'include':
         directives.relationLoad = this.parseCommaSeparatedList(value, '@include');
-        directives.include = this.parseCommaSeparatedList(value, '@include');
+        directives.include = directives.relationLoad;
         break;
       case 'aggregate':
         aggregationMetrics.push(
@@ -608,11 +469,10 @@ export class SCFormat implements FilterFormat {
         directives.having.push(
           parseHavingDirective(
             value,
-            (predicateValue) => {
-              const condition = this.parseCondition(predicateValue);
-              this.validateCondition(condition);
-              return condition;
-            },
+            (predicateValue) =>
+              this.normalizeParsedCondition(
+                this.parseDirectivePredicate(predicateValue),
+              ),
             '@having',
           ),
         );
@@ -635,127 +495,6 @@ export class SCFormat implements FilterFormat {
 
       return { field, direction };
     });
-  }
-
-  private parseCondition(condition: string): NormalizedCondition {
-    const [field, rawOperator, ...rawValue] = this.splitByUnescapedColon(
-      condition,
-    );
-
-    if (!field || !rawOperator || rawValue.length === 0) {
-      throw new BadRequestException(
-        `Invalid condition format: "${condition}". Expected field:operator:value`,
-      );
-    }
-
-    const operator = this.normalizeOperator(rawOperator.trim());
-    const resolvedField = this.unescapeSegment(field.trim());
-    const value = this.parseValue(rawValue.join(':').trim(), operator, resolvedField);
-
-    return {
-      field: resolvedField,
-      operator,
-      value,
-    };
-  }
-
-  private parseCaseExpression(
-    segments: string[],
-    startIndex: number,
-  ): { expression: NormalizedCaseExpression; nextIndex: number } {
-    const tokens = this.splitByUnescapedColon(segments[startIndex]);
-
-    if (tokens.length < 2) {
-      throw new BadRequestException(
-        'CASE expression requires an output field: case:outputField',
-      );
-    }
-
-    const outputField = this.unescapeSegment(tokens[1].trim());
-    const cases: NormalizedCaseExpression['cases'] = [];
-    let elseValue: unknown;
-    let index = startIndex;
-
-    const inlineTokens = tokens.slice(2);
-    if (inlineTokens.length > 0) {
-      const inlineSegment = inlineTokens.join(':');
-      if (inlineSegment.startsWith('when:')) {
-        const parsed = this.parseCaseWhenSegment(inlineSegment);
-        cases.push(parsed);
-      } else if (inlineSegment.startsWith('else:')) {
-        elseValue = this.parsePrimitive(inlineSegment.slice(5).trim());
-      } else {
-        throw new BadRequestException(
-          `Invalid CASE segment "${segments[startIndex]}"`,
-        );
-      }
-    }
-
-    while (index + 1 < segments.length) {
-      const nextSegment = segments[index + 1];
-
-      if (nextSegment.startsWith('when:')) {
-        cases.push(this.parseCaseWhenSegment(nextSegment));
-        index += 1;
-        continue;
-      }
-
-      if (nextSegment.startsWith('else:')) {
-        elseValue = this.parsePrimitive(nextSegment.slice(5).trim());
-        index += 1;
-      }
-
-      break;
-    }
-
-    if (cases.length === 0) {
-      throw new BadRequestException(
-        `CASE expression "${outputField}" must contain at least one when/then pair`,
-      );
-    }
-
-    return {
-      expression: {
-        outputField,
-        cases,
-        elseValue,
-      },
-      nextIndex: index,
-    };
-  }
-
-  private parseCaseWhenSegment(segment: string) {
-    const tokens = this.splitByUnescapedColon(segment);
-
-    if (tokens.length < 6 || tokens[0] !== 'when') {
-      throw new BadRequestException(
-        `Invalid CASE condition "${segment}". Expected when:field:operator:value:then:result`,
-      );
-    }
-
-    const thenIndex = tokens.findIndex((token) => token === 'then');
-    if (thenIndex < 4 || thenIndex === tokens.length - 1) {
-      throw new BadRequestException(
-        `Invalid CASE condition "${segment}". Missing then:value segment`,
-      );
-    }
-
-    const field = this.unescapeSegment(tokens[1].trim());
-    const operator = this.normalizeOperator(tokens[2].trim());
-    const rawValue = tokens.slice(3, thenIndex).join(':').trim();
-    const thenValue = tokens.slice(thenIndex + 1).join(':').trim();
-    const when: NormalizedCondition = {
-      field,
-      operator,
-      value: this.parseValue(rawValue, operator, field),
-    };
-
-    this.validateCondition(when);
-
-    return {
-      when,
-      then: this.parsePrimitive(thenValue),
-    };
   }
 
   private parseValue(
@@ -1149,12 +888,6 @@ export class SCFormat implements FilterFormat {
     }
 
     return normalized;
-  }
-
-  private assertNeverRawExpression(expression: never): never {
-    throw new BadRequestException(
-      `Unhandled raw expression node: ${JSON.stringify(expression)}`,
-    );
   }
 
   private throwValidationIssues(issues: FilterValidationIssue[] | undefined): void {

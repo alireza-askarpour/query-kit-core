@@ -3,7 +3,6 @@ import {
   ValidationDependencies,
 } from './sc-format-validation.types';
 import {
-  flattenRawPredicates,
   parseRawLogicalExpression,
   RawExpressionNode,
   splitTopLevelSegments,
@@ -131,15 +130,14 @@ export function parseQueryDocument(
 
   if (expressionSegments.length > 0) {
     try {
-      const rawExpression = parseRawLogicalExpression(expressionSegments.join(';'));
-
-      if (rawExpression) {
-        expression = mapRawExpression(rawExpression, dependencies);
-        filterConditions.push(...flattenParsedPredicates(expression));
-      }
+      expression = parseExpressionSegments(
+        expressionSegments,
+        dependencies,
+        filterConditions,
+      );
     } catch (error) {
       filterConditions.push({
-        raw: expressionSegments.join(';'),
+        raw: expressionSegments.length === 1 ? expressionSegments[0] : '',
         error: error instanceof Error ? error.message : 'Invalid logical expression',
       });
     }
@@ -171,35 +169,6 @@ function parsePredicate(
     rawValue: match[3],
     value: null,
   };
-}
-
-function parseCaseSegments(
-  caseSegments: string[],
-  conditions: ParsedCondition[],
-  dependencies: ValidationDependencies,
-): void {
-  for (const caseSegment of caseSegments) {
-    if (!caseSegment.startsWith('when:')) {
-      continue;
-    }
-
-    const match = caseSegment.match(/^when:([^:]+):([^:]+):(.*):then:(.*)$/);
-
-    if (!match) {
-      conditions.push({
-        raw: caseSegment,
-        error: 'Invalid CASE condition format',
-      });
-      continue;
-    }
-
-    conditions.push({
-      field: match[1].replace(/\\:/g, ':'),
-      operator: dependencies.normalizeOperator(match[2]),
-      rawValue: match[3],
-      value: null,
-    });
-  }
 }
 
 function parseCaseExpression(
@@ -287,36 +256,65 @@ function parseCaseWhenSegment(
 function mapRawExpression(
   expression: RawExpressionNode,
   dependencies: ValidationDependencies,
+  filterConditions: ParsedCondition[],
 ): ParsedExpressionNode {
   switch (expression.kind) {
-    case 'predicate':
+    case 'predicate': {
+      const predicate = parsePredicate(expression.raw, dependencies);
+      filterConditions.push(predicate);
       return {
         kind: 'predicate',
-        predicate: parsePredicate(expression.raw, dependencies),
+        predicate,
       };
+    }
     case 'not':
       return {
         kind: 'not',
-        child: mapRawExpression(expression.child, dependencies),
+        child: mapRawExpression(expression.child, dependencies, filterConditions),
       };
     case 'group':
       return {
         kind: 'group',
         operator: expression.operator,
         children: expression.children.map((child) =>
-          mapRawExpression(child, dependencies),
+          mapRawExpression(child, dependencies, filterConditions),
         ),
       };
   }
 }
 
-function flattenParsedPredicates(expression: ParsedExpressionNode): ParsedCondition[] {
-  switch (expression.kind) {
-    case 'predicate':
-      return [expression.predicate];
-    case 'not':
-      return flattenParsedPredicates(expression.child);
-    case 'group':
-      return expression.children.flatMap((child) => flattenParsedPredicates(child));
+function parseExpressionSegments(
+  expressionSegments: string[],
+  dependencies: ValidationDependencies,
+  filterConditions: ParsedCondition[],
+): ParsedExpressionNode | undefined {
+  if (expressionSegments.length === 0) {
+    return undefined;
   }
+
+  if (expressionSegments.length === 1) {
+    return parseExpressionSegment(expressionSegments[0], dependencies, filterConditions);
+  }
+
+  return {
+    kind: 'group',
+    operator: 'and',
+    children: expressionSegments.map((segment) =>
+      parseExpressionSegment(segment, dependencies, filterConditions),
+    ),
+  };
+}
+
+function parseExpressionSegment(
+  segment: string,
+  dependencies: ValidationDependencies,
+  filterConditions: ParsedCondition[],
+): ParsedExpressionNode {
+  const rawExpression = parseRawLogicalExpression(segment);
+
+  if (!rawExpression) {
+    throw new Error('Logical expression cannot be empty');
+  }
+
+  return mapRawExpression(rawExpression, dependencies, filterConditions);
 }
