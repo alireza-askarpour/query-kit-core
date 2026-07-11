@@ -1,20 +1,16 @@
-# Documentation Index
+# Documentation Structure
 
-This folder contains package-level guides that describe the architecture, extension model, and packaging workflow.
+This directory is the structured entry point for package documentation.
 
-## Documents
+Canonical content remains the root [`README.md`](../README.md). The files in
+this directory are organized for documentation-site navigation and should point
+back to the canonical sections instead of duplicating the source content.
 
-- [Architecture](architecture.md)
-- [SQL dialect support](sql-dialect-support.md)
-- [Format extension guide](format-extension.md)
-- [Adapter extension guide](adapter-extension.md)
-- [Packaging guide](packaging.md)
-- [Testing guide](testing.md)
+Available pages:
 
-## Recommended reading order
-
-1. [Architecture](architecture.md)
-2. [Format extension guide](format-extension.md)
-3. [Adapter extension guide](adapter-extension.md)
-4. [Packaging guide](packaging.md)
-5. [Testing guide](testing.md)
+- [Home](./index.md)
+- [Getting started](./getting-started.md)
+- [Setup and configuration](./setup-and-configuration.md)
+- [Query syntax](./query-syntax.md)
+- [Validation and policy](./validation-and-policy.md)
+- [Adapters and extensions](./adapters-and-extensions.md)
