@@ -3,6 +3,8 @@ node_modules/
 
 # Build output
 dist/
+dist_tmp/
+dist_alt/
 coverage/
 *.tsbuildinfo
 
@@ -34,6 +36,7 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+.tmp-test-dist-alt/
 *.tmp
 
 # Local runtime artifacts

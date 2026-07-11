@@ -10,6 +10,7 @@ import {
 } from './mc-format-validation.constants';
 import {
   MongoParsedQueryDocument,
+  parseEscapedList,
   parseMongoQueryDocument,
 } from './mc-format-validation.parser';
 import {
@@ -365,11 +366,8 @@ export class MCFormatValidator
     const metrics: Array<{ field?: string; operator: string; alias?: string }> = [];
     const groupByFields: string[] = [];
  
-    parsedQuery.directiveSegments.forEach((part: string) => {
-      const [rawDirective, ...rawValueParts] = part.split(/(?<!\\):/);
-      const directive = rawDirective.slice(1).trim().toLowerCase();
-      const value = rawValueParts.join(':').trim();
-
+    parsedQuery.directives.forEach((directiveSegment) => {
+      const { rawName, name: directive, value } = directiveSegment;
       try {
         switch (directive) {
           case 'aggregate':
@@ -389,7 +387,7 @@ export class MCFormatValidator
         }
       } catch (error) {
         errors.push({
-          field: rawDirective,
+          field: rawName,
           message: error instanceof Error ? error.message : String(error),
           code: 'AGGREGATION_DIRECTIVE_ERROR',
         });
@@ -518,29 +516,8 @@ export class MCFormatValidator
     return derivedSchema;
   }
 
-  private parseDirectiveCondition(rawValue: string): MongoParsedCondition {
-    const match = rawValue.match(/^([^:]+):([^:]+):(.*)$/);
-
-    if (!match) {
-      return {
-        raw: rawValue,
-        error: 'Invalid format',
-      };
-    }
-
-    return {
-      field: match[1].replace(/\\:/g, ':'),
-      operator: this.normalizeOperator(match[2]),
-      rawValue: match[3],
-      value: null,
-    };
-  }
-
   private parseDirectiveList(value: string): string[] {
-    const items = value
-      .split(/(?<!\\),/)
-      .map((item) => item.replace(/\\,/g, ',').trim())
-      .filter(Boolean);
+    const items = parseEscapedList(value);
 
     if (items.length === 0) {
       throw new Error('Directive requires at least one value');

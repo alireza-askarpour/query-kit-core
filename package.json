@@ -27,6 +27,7 @@
     "test:coverage": "pnpm build && node --test --experimental-test-coverage test/**/*.test.js",
     "bench:validation-reuse": "pnpm build && node test/benchmarks/validation-reuse.bench.js",
     "bench:sc-parser": "pnpm build && node test/benchmarks/sc-parser.bench.js",
+    "bench:mc-parser": "pnpm build && node test/benchmarks/mc-parser.bench.js",
     "prepublishOnly": "pnpm lint && pnpm test"
   },
   "keywords": [
