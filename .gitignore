@@ -13,6 +13,7 @@ coverage/
 # Package manager
 .pnpm-store/
 .npm-cache/
+.tmp-npm-cache/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
