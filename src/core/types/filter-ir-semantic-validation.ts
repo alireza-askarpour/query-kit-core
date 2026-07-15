@@ -1,11 +1,12 @@
-import { FilterValidationIssue } from '../contracts';
-import {
+import type { FilterValidationIssue } from '../contracts';
+import type {
   AggregationExpression,
   FilterIR,
+  NormalizedFilter} from './filter-ir.interface';
+import {
   getAggregationDefinition,
   getProjectionFields,
-  getSorting,
-  NormalizedFilter,
+  getSorting
 } from './filter-ir.interface';
 
 export function validateFilterIrSemantics(

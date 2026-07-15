@@ -1,27 +1,29 @@
+// @ts-nocheck
+export {};
 const { performance } = require('perf_hooks');
 
 const { BadRequestException } = require('@nestjs/common');
-const { FilterRegistry } = require('../../dist/core/services/filter-registry.service.js');
-const { FilterProcessor } = require('../../dist/core/services/filter-processor.service.js');
-const { SCFormat } = require('../../dist/formats/sc/sc-format.service.js');
-const { SCFormatValidator } = require('../../dist/formats/sc/sc-format.validator.js');
-const { SequelizeAdapter } = require('../../dist/adapters/sequelize/sequelize.adapter.js');
+const { FilterRegistry } = require('../../lib/core/services/filter-registry.service.js');
+const { FilterProcessor } = require('../../lib/core/services/filter-processor.service.js');
+const { SCFormat } = require('../../lib/formats/sc/sc-format.service.js');
+const { SCFormatValidator } = require('../../lib/formats/sc/sc-format.validator.js');
+const { SequelizeAdapter } = require('../../lib/adapters/sequelize/sequelize.adapter.js');
 const {
   createFilterIR,
   createLogicalGroupNode,
   createNotNode,
   createPredicateNode,
   getPredicates,
-} = require('../../dist/core/types/filter-ir.interface.js');
+} = require('../../lib/core/types/filter-ir.interface.js');
 const {
   parseRawLogicalExpression,
   splitTopLevelSegments,
-} = require('../../dist/formats/sc/sc-logical-expression.parser.js');
+} = require('../../lib/formats/sc/sc-logical-expression.parser.js');
 const {
   parseAggregationDirective,
   parseGroupByDirective,
   parseHavingDirective,
-} = require('../../dist/formats/aggregation-directive.utils.js');
+} = require('../../lib/formats/aggregation-directive.utils.js');
 
 function makeScQuery(n) {
   const parts = [];
@@ -406,7 +408,7 @@ class LegacyScFormat extends SCFormat {
 }
 
 function buildAggregationDefinition(metrics, groupBy, having) {
-  return require('../../dist/formats/aggregation-directive.utils.js').buildAggregationDefinition(
+  return require('../../lib/formats/aggregation-directive.utils.js').buildAggregationDefinition(
     metrics,
     groupBy,
     having,

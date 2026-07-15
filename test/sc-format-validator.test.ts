@@ -1,9 +1,11 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
   SCFormatValidator,
-} = require('../dist/formats/sc/sc-format.validator.js');
+} = require('../lib/formats/sc/sc-format.validator.js');
 
 test('sc validator enforces field whitelist and blacklist', () => {
   const validator = new SCFormatValidator({

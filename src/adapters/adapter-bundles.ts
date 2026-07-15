@@ -1,5 +1,5 @@
-import { Provider, Type } from '@nestjs/common';
-import { AdapterRegistration, QueryAdapter } from '../core';
+import type { Provider, Type } from '@nestjs/common';
+import type { AdapterRegistration, QueryAdapter } from '../core';
 import { MongooseAdapter } from './mongoose';
 import { SequelizeAdapter } from './sequelize';
 import { TypeOrmAdapter } from './typeorm';

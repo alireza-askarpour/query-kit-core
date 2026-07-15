@@ -1,9 +1,11 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
   TypeOrmAdapter,
-} = require('../dist/adapters/typeorm/typeorm.adapter.js');
+} = require('../lib/adapters/typeorm/typeorm.adapter.js');
 
 class MockQueryBuilder {
   constructor() {

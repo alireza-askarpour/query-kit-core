@@ -1,16 +1,17 @@
-import {
+import type {
   AggregateDefinition,
   AggregationExpression,
   FilterPredicate,
   FilterIR,
-  getPagination,
   getRelations,
-  normalizeRelationDirectives,
   NormalizedCaseExpression,
   NormalizedSort,
-  RelationDefinition,
-} from '../../core';
+  RelationDefinition} from '../../core';
 import {
+  getPagination,
+  normalizeRelationDirectives
+} from '../../core';
+import type {
   TypeOrmAdapterOptions,
   TypeOrmJoinDefinition,
   TypeOrmQueryBuilderLike,

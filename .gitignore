@@ -5,11 +5,14 @@ node_modules/
 dist/
 dist_tmp/
 dist_alt/
+lib/
+lib_tmp/
 coverage/
 *.tsbuildinfo
 
 # Package manager
 .pnpm-store/
+.npm-cache/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -37,6 +40,7 @@ Thumbs.db
 tmp/
 temp/
 .tmp-test-dist-alt/
+.tmp-test/
 *.tmp
 
 # Local runtime artifacts

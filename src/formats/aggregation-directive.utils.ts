@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import {
+import type {
   AggregateDefinition,
   FilterPredicate,
   AggregationExpression,

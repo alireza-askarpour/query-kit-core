@@ -35,7 +35,7 @@ export interface MongooseModelLike<TResult = unknown> {
   aggregate?(pipeline?: Record<string, unknown>[]): MongooseAggregateLike<TResult>;
 }
 
-export interface MongooseQueryLike<TResult = unknown> {
+export interface MongooseQueryLike<_TResult = unknown> {
   sort(sort: Record<string, 1 | -1>): this;
   limit(limit: number): this;
   skip(offset: number): this;
@@ -48,7 +48,7 @@ export interface MongooseQueryLike<TResult = unknown> {
   ): this;
 }
 
-export interface MongooseAggregateLike<TResult = unknown> {
+export interface MongooseAggregateLike<_TResult = unknown> {
   sort(sort: Record<string, 1 | -1>): this;
   limit(limit: number): this;
   skip(offset: number): this;

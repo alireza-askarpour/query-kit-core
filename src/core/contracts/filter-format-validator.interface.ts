@@ -1,4 +1,4 @@
-import { Query } from './filter-format.interface';
+import type { Query } from './filter-format.interface';
 
 export interface FilterValidationIssue {
   field: string;

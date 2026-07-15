@@ -1,18 +1,20 @@
+// @ts-nocheck
+export {};
 const { performance } = require('perf_hooks');
 
-const { FilterRegistry } = require('../../dist/core/services/filter-registry.service.js');
-const { FilterProcessor } = require('../../dist/core/services/filter-processor.service.js');
-const { MCFormat } = require('../../dist/formats/mc/mc-format.service.js');
-const { SequelizeAdapter } = require('../../dist/adapters/sequelize/sequelize.adapter.js');
+const { FilterRegistry } = require('../../lib/core/services/filter-registry.service.js');
+const { FilterProcessor } = require('../../lib/core/services/filter-processor.service.js');
+const { MCFormat } = require('../../lib/formats/mc/mc-format.service.js');
+const { SequelizeAdapter } = require('../../lib/adapters/sequelize/sequelize.adapter.js');
 const {
   createFilterIR,
-} = require('../../dist/core/types/filter-ir.interface.js');
+} = require('../../lib/core/types/filter-ir.interface.js');
 const {
   buildAggregationDefinition,
   parseAggregationDirective,
   parseGroupByDirective,
   parseHavingDirective,
-} = require('../../dist/formats/aggregation-directive.utils.js');
+} = require('../../lib/formats/aggregation-directive.utils.js');
 
 function makeMcQuery(n) {
   const parts = [];

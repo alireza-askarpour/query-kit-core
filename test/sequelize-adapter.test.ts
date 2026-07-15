@@ -1,10 +1,12 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Op } = require('sequelize');
 
 const {
   SequelizeAdapter,
-} = require('../dist/adapters/sequelize/sequelize.adapter.js');
+} = require('../lib/adapters/sequelize/sequelize.adapter.js');
 
 class MockModel {
   constructor(dialect = 'postgres') {

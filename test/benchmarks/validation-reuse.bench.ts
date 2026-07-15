@@ -1,12 +1,14 @@
+// @ts-nocheck
+export {};
 const { performance } = require('perf_hooks');
 
-const { FilterRegistry } = require('../../dist/core/services/filter-registry.service.js');
-const { FilterProcessor } = require('../../dist/core/services/filter-processor.service.js');
-const { SCFormat } = require('../../dist/formats/sc/sc-format.service.js');
-const { SCFormatValidator } = require('../../dist/formats/sc/sc-format.validator.js');
-const { MCFormat } = require('../../dist/formats/mc/mc-format.service.js');
-const { MCFormatValidator } = require('../../dist/formats/mc/mc-format.validator.js');
-const { SequelizeAdapter } = require('../../dist/adapters/sequelize/sequelize.adapter.js');
+const { FilterRegistry } = require('../../lib/core/services/filter-registry.service.js');
+const { FilterProcessor } = require('../../lib/core/services/filter-processor.service.js');
+const { SCFormat } = require('../../lib/formats/sc/sc-format.service.js');
+const { SCFormatValidator } = require('../../lib/formats/sc/sc-format.validator.js');
+const { MCFormat } = require('../../lib/formats/mc/mc-format.service.js');
+const { MCFormatValidator } = require('../../lib/formats/mc/mc-format.validator.js');
+const { SequelizeAdapter } = require('../../lib/adapters/sequelize/sequelize.adapter.js');
 
 function createProcessor() {
   const registry = new FilterRegistry();

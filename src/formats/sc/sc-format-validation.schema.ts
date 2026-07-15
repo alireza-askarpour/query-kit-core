@@ -2,8 +2,7 @@ import {
   DISPLAY_OPERATORS,
   VALID_OPERATORS,
 } from './sc-format-validation.constants';
-import {
-  FieldSchema,
+import type {
   ValidationError,
   ValidationOptions,
 } from './sc-format-validation.types';

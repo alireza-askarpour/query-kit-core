@@ -1,9 +1,11 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
   MongooseAdapter,
-} = require('../dist/adapters/mongoose/mongoose.adapter.js');
+} = require('../lib/adapters/mongoose/mongoose.adapter.js');
 
 class MockMongooseQuery {
   constructor(filter, projection) {

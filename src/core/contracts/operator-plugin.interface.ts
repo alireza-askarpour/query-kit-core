@@ -1,6 +1,6 @@
-import { FilterOperator } from '../types/normalized-filter.interface';
-import { FilterMetadata } from './filter-capabilities.interface';
-import { FilterValidationIssue } from './filter-format-validator.interface';
+import type { FilterOperator } from '../types/normalized-filter.interface';
+import type { FilterMetadata } from './filter-capabilities.interface';
+import type { FilterValidationIssue } from './filter-format-validator.interface';
 
 export interface FormatOperatorParseUtilities {
   parseList(rawValue: string, label: string): string[];

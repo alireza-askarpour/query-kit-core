@@ -1,6 +1,6 @@
-import { Query } from './filter-format.interface';
-import { FilterAuditResult } from './filter-diagnostics.interface';
-import { FilterPolicyContext, FilterPolicyOptions } from './filter-policy.interface';
+import type { Query } from './filter-format.interface';
+import type { FilterAuditResult } from './filter-diagnostics.interface';
+import type { FilterPolicyContext, FilterPolicyOptions } from './filter-policy.interface';
 
 export interface FilterPipelineOptions<
   TSchema = unknown,

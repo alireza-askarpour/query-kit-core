@@ -1,9 +1,11 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
   MCFormatValidator,
-} = require('../dist/formats/mc/mc-format.validator.js');
+} = require('../lib/formats/mc/mc-format.validator.js');
 
 test('mc validator validates and sanitizes valid conditions', () => {
   const validator = new MCFormatValidator();

@@ -4,9 +4,11 @@ import {
   createNotNode,
   createPredicateNode,
   createFilterIR,
+  type AggregationExpression,
   FilterValidationIssue,
   FilterFormat,
   FilterExpressionNode,
+  type FilterPredicate,
   FilterOperator,
   NormalizedCaseExpression,
   NormalizedCondition,
@@ -17,7 +19,6 @@ import {
   getDefaultFilterOperatorRegistry,
   normalizeOperatorValidationOutcome,
 } from '../../core';
-import { splitTopLevelSegments } from './sc-logical-expression.parser';
 import type {
   ParsedCaseExpressionNode,
   ParsedExpressionNode,
@@ -166,7 +167,7 @@ export class SCFormat implements FilterFormat {
     const caseExpressions = parsedQuery.caseExpressions.map((expression) =>
       this.buildCaseExpressionFromParsed(expression),
     );
-    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
+    const aggregationMetrics: AggregationExpression[] = [];
     const directives = {
       sort: [] as NormalizedSort[],
       limit: query.size,
@@ -176,7 +177,7 @@ export class SCFormat implements FilterFormat {
       relationLoad: query.relations ?? query.customInclude,
       include: query.customInclude,
       groupBy: undefined as string[] | undefined,
-      having: [] as import('../../core').FilterPredicate[],
+      having: [] as FilterPredicate[],
     };
     let havingIndex = 0;
 
@@ -421,9 +422,9 @@ export class SCFormat implements FilterFormat {
       relationLoad?: Query['relations'];
       include?: Query['customInclude'];
       groupBy?: string[];
-      having: import('../../core').FilterPredicate[];
+      having: FilterPredicate[];
     },
-    aggregationMetrics: import('../../core').AggregationExpression[],
+    aggregationMetrics: AggregationExpression[],
   ): void {
     const [directiveName, ...rawValueParts] = this.splitByUnescapedColon(segment);
     const name = directiveName.slice(1).trim().toLowerCase();

@@ -1,4 +1,4 @@
-import { ValidationOptions } from './sc-format-validation.types';
+import type { ValidationOptions } from './sc-format-validation.types';
 
 export const OPERATOR_ALIASES: Record<string, string> = {
   eq: 'eq',

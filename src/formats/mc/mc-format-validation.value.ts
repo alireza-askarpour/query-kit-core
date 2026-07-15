@@ -1,4 +1,4 @@
-import {
+import type {
   MongoFieldSchema,
   MongoValidationDependencies,
 } from './mc-format-validation.types';

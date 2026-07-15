@@ -1,4 +1,4 @@
-import { BuiltinFilterOperator } from '../core';
+import type { BuiltinFilterOperator } from '../core';
 
 export type SqlDialect = 'postgres' | 'mysql' | 'sqlite';
 

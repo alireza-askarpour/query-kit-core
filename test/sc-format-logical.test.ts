@@ -1,10 +1,12 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { SCFormat } = require('../dist/formats/sc/sc-format.service.js');
+const { SCFormat } = require('../lib/formats/sc/sc-format.service.js');
 const {
   SCFormatValidator,
-} = require('../dist/formats/sc/sc-format.validator.js');
+} = require('../lib/formats/sc/sc-format.validator.js');
 
 test('sc format builds logical expression tree with grouping and negation', () => {
   const format = new SCFormat();

@@ -1,8 +1,10 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   createFilterIR,
+  type AggregationExpression,
   FilterFormat,
   FilterOperator,
+  type FilterPredicate,
   FormatOperatorPlugin,
   NormalizedCondition,
   NormalizedSort,
@@ -85,7 +87,7 @@ export class MCFormat implements FilterFormat {
       parseObjectLiteral: this.parseObjectLiteral.bind(this),
     });
     const conditions: NormalizedCondition[] = [];
-    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
+    const aggregationMetrics: AggregationExpression[] = [];
     const directives = {
       sort: this.parseSortDirective(query.sortString),
       limit: query.size,
@@ -95,7 +97,7 @@ export class MCFormat implements FilterFormat {
       relationLoad: query.relations ?? query.customInclude,
       customInclude: query.customInclude,
       groupBy: undefined as string[] | undefined,
-      having: [] as import('../../core').FilterPredicate[],
+      having: [] as FilterPredicate[],
     };
 
     for (const condition of parsedQuery.filterConditions) {
@@ -133,7 +135,7 @@ export class MCFormat implements FilterFormat {
     }
 
     const conditions: NormalizedCondition[] = [];
-    const aggregationMetrics = [] as import('../../core').AggregationExpression[];
+    const aggregationMetrics: AggregationExpression[] = [];
     const directives = {
       sort: this.parseSortDirective(query.sortString),
       limit: query.size,
@@ -143,7 +145,7 @@ export class MCFormat implements FilterFormat {
       relationLoad: query.relations ?? query.customInclude,
       customInclude: query.customInclude,
       groupBy: undefined as string[] | undefined,
-      having: [] as import('../../core').FilterPredicate[],
+      having: [] as FilterPredicate[],
     };
 
     for (const condition of parsedQuery.filterConditions) {
@@ -184,9 +186,9 @@ export class MCFormat implements FilterFormat {
       relationLoad?: Query['relations'];
       customInclude?: Query['customInclude'];
       groupBy?: string[];
-      having: import('../../core').FilterPredicate[];
+      having: FilterPredicate[];
     },
-    aggregationMetrics: import('../../core').AggregationExpression[],
+    aggregationMetrics: AggregationExpression[],
   ): void {
     const { name, rawName, value } = directive;
 

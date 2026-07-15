@@ -1,9 +1,9 @@
-import {
+import type {
   AdapterOperatorPlugin,
   BuiltinFilterOperator,
   RelationDefinition,
 } from '../../core';
-import { SqlDialect } from '../sql-dialects';
+import type { SqlDialect } from '../sql-dialects';
 
 export interface TypeOrmQueryBuilderLike {
   andWhere(condition: string, parameters?: Record<string, unknown>): this;

@@ -1,8 +1,8 @@
-import {
+import type {
   FilterValidationIssue,
   FilterValidationResult,
 } from '../../core';
-import {
+import type {
   RoleAccessPolicy,
   RoleFieldAccessPolicy,
   ValidationContext,

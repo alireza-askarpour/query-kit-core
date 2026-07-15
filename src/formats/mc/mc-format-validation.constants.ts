@@ -1,4 +1,4 @@
-import { MongoValidationOptions } from './mc-format-validation.types';
+import type { MongoValidationOptions } from './mc-format-validation.types';
 
 export const MC_OPERATOR_ALIASES: Record<string, string> = {
   eq: 'eq',

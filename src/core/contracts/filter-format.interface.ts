@@ -1,8 +1,8 @@
-import {
+import type {
   FilterIR,
   RelationDirective,
 } from '../types/normalized-filter.interface';
-import {
+import type {
   FilterCapabilities,
   FilterMetadata,
 } from './filter-capabilities.interface';

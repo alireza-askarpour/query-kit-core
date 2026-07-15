@@ -2,7 +2,7 @@ import {
   MC_DISPLAY_OPERATORS,
   MC_VALID_OPERATORS,
 } from './mc-format-validation.constants';
-import {
+import type {
   MongoFieldSchema,
   MongoValidationError,
   MongoValidationOptions,

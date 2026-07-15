@@ -1,10 +1,11 @@
-import {
+import type {
   ParsedCondition,
   ValidationDependencies,
 } from './sc-format-validation.types';
+import type {
+  RawExpressionNode} from './sc-logical-expression.parser';
 import {
   parseRawLogicalExpression,
-  RawExpressionNode,
   splitTopLevelSegments,
 } from './sc-logical-expression.parser';
 

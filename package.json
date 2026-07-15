@@ -2,32 +2,34 @@
   "name": "query-kit-core",
   "version": "1.0.0",
   "description": "Extensible query filter parser and adapter pipeline for NestJS applications.",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
   "files": [
-    "dist",
-    "README.md"
+    "lib",
+    "README.md",
+    "LICENSE"
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "require": "./dist/index.js",
-      "default": "./dist/index.js"
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.js",
+      "default": "./lib/index.js"
     }
   },
   "sideEffects": false,
   "scripts": {
-    "build": "rm -rf dist_tmp && tsc -p tsconfig.build.json --outDir dist_tmp && rm -rf dist && mv dist_tmp dist",
+    "build": "rm -rf lib_tmp && tsc -p tsconfig.build.json --outDir lib_tmp && rm -rf lib && mv lib_tmp lib",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
     "lint:fix": "eslint \"src/**/*.ts\" --fix",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.js\" \"*.{json,md}\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.js\" \"*.{json,md}\"",
-    "test": "pnpm build && node --test test/**/*.test.js",
-    "test:coverage": "pnpm build && node --test --experimental-test-coverage test/**/*.test.js",
-    "bench:validation-reuse": "pnpm build && node test/benchmarks/validation-reuse.bench.js",
-    "bench:sc-parser": "pnpm build && node test/benchmarks/sc-parser.bench.js",
-    "bench:mc-parser": "pnpm build && node test/benchmarks/mc-parser.bench.js",
+    "build:test": "rm -rf .tmp-test && tsc -p tsconfig.test.json && cp -R lib .tmp-test/lib",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\"",
+    "test": "pnpm build && pnpm build:test && node --test .tmp-test/test/**/*.test.js",
+    "test:coverage": "pnpm build && pnpm build:test && node --test --experimental-test-coverage .tmp-test/test/**/*.test.js",
+    "bench:validation-reuse": "pnpm build && pnpm build:test && node .tmp-test/test/benchmarks/validation-reuse.bench.js",
+    "bench:sc-parser": "pnpm build && pnpm build:test && node .tmp-test/test/benchmarks/sc-parser.bench.js",
+    "bench:mc-parser": "pnpm build && pnpm build:test && node .tmp-test/test/benchmarks/mc-parser.bench.js",
     "prepublishOnly": "pnpm lint && pnpm test"
   },
   "keywords": [

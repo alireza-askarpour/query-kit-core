@@ -1,7 +1,9 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { MCFormat } = require('../dist/formats/mc/mc-format.service.js');
+const { MCFormat } = require('../lib/formats/mc/mc-format.service.js');
 
 test('mc format parses mongo operators and populate directive', () => {
   const format = new MCFormat();

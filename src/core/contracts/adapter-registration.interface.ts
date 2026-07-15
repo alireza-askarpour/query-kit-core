@@ -1,8 +1,8 @@
-import {
+import type {
   FilterCapabilities,
   FilterMetadata,
 } from './filter-capabilities.interface';
-import { QueryAdapter } from './query-adapter.interface';
+import type { QueryAdapter } from './query-adapter.interface';
 
 export interface AdapterCapabilities extends FilterCapabilities {}
 

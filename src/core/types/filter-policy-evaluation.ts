@@ -1,10 +1,11 @@
-import { FilterPolicyEvaluationResult, FilterPolicyOptions } from '../contracts';
-import { FilterValidationIssue } from '../contracts';
-import {
+import type { FilterPolicyEvaluationResult, FilterPolicyOptions } from '../contracts';
+import type { FilterValidationIssue } from '../contracts';
+import type {
   FilterExpressionNode,
   FilterIR,
   FilterOperator,
-  FilterPredicate,
+  FilterPredicate} from './filter-ir.interface';
+import {
   getAggregationDefinition,
   getFilterExpression,
   getPredicates,
@@ -12,7 +13,7 @@ import {
   getSqlFilterFeatures,
   normalizeRelationDirectives,
 } from './filter-ir.interface';
-import { FilterPolicyContext } from '../contracts/filter-policy.interface';
+import type { FilterPolicyContext } from '../contracts/filter-policy.interface';
 
 const DEFAULT_EXPENSIVE_OPERATORS = new Set<FilterOperator>([
   'regex',

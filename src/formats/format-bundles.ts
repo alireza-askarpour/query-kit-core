@@ -1,5 +1,5 @@
-import { Provider, Type } from '@nestjs/common';
-import { FilterFormatRegistration } from '../core/services/filter-registry.service';
+import type { Provider, Type } from '@nestjs/common';
+import type { FilterFormatRegistration } from '../core/services/filter-registry.service';
 import { MCFormat, MCFormatValidator } from './mc';
 import { SCFormat, SCFormatValidator } from './sc';
 

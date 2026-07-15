@@ -1,6 +1,6 @@
-import { FilterIR } from '../types/normalized-filter.interface';
-import { AdapterStrategyDiagnostic } from './filter-diagnostics.interface';
-import {
+import type { FilterIR } from '../types/normalized-filter.interface';
+import type { AdapterStrategyDiagnostic } from './filter-diagnostics.interface';
+import type {
   FilterCapabilities,
   FilterMetadata,
 } from './filter-capabilities.interface';

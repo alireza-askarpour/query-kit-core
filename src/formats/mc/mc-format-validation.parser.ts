@@ -1,4 +1,4 @@
-import {
+import type {
   MongoParsedCondition,
   MongoValidationDependencies,
 } from './mc-format-validation.types';

@@ -1,9 +1,11 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
   FilterRegistry,
-} = require('../dist/core/services/filter-registry.service.js');
+} = require('../lib/core/services/filter-registry.service.js');
 
 class MockAdapter {
   constructor(name = 'mock') {

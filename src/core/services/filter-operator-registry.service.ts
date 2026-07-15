@@ -1,4 +1,4 @@
-import {
+import type {
   AdapterOperatorPlugin,
   FilterOperatorPluginBundle,
   FormatOperatorPlugin,
@@ -6,7 +6,7 @@ import {
   OperatorValidationOutcome,
   OperatorValidationResult,
 } from '../contracts/operator-plugin.interface';
-import { FilterValidationIssue } from '../contracts/filter-format-validator.interface';
+import type { FilterValidationIssue } from '../contracts/filter-format-validator.interface';
 
 interface RegistryBucket<TPlugin extends { operator: string; aliases?: string[] }> {
   plugins: Map<string, TPlugin>;

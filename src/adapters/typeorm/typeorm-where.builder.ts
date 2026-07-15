@@ -1,9 +1,7 @@
-import { BuiltinFilterOperator, NormalizedCondition } from '../../core';
-import {
-  assertSqlOperatorSupport,
-  SqlDialect,
-} from '../sql-dialects';
-import {
+import type { BuiltinFilterOperator } from '../../core';
+import type { SqlDialect } from '../sql-dialects';
+import { assertSqlOperatorSupport } from '../sql-dialects';
+import type {
   TypeOrmClauseBuilderDependencies,
   TypeOrmOperatorHandler,
   TypeOrmWhereClause,

@@ -1,3 +1,5 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
@@ -10,7 +12,7 @@ const {
   getSorting,
   getSqlFilterFeatures,
   normalizeRelationDirectives,
-} = require('../dist/core/types/filter-ir.interface.js');
+} = require('../lib/core/types/filter-ir.interface.js');
 
 test('createFilterIR exposes neutral and legacy-compatible views', () => {
   const filter = createFilterIR({

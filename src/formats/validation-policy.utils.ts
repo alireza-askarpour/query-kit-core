@@ -1,4 +1,4 @@
-import { FilterValidationIssue } from '../core';
+import type { FilterValidationIssue } from '../core';
 
 export interface ValidationContext {
   role?: string;

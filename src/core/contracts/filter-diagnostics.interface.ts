@@ -1,6 +1,6 @@
-import { FilterExpressionNode, FilterIR } from '../types';
-import { FilterValidationIssue } from './filter-format-validator.interface';
-import { Query } from './filter-format.interface';
+import type { FilterExpressionNode, FilterIR } from '../types';
+import type { FilterValidationIssue } from './filter-format-validator.interface';
+import type { Query } from './filter-format.interface';
 
 export type FilterDiagnosticStage =
   | 'request'

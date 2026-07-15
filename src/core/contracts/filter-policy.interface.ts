@@ -1,4 +1,4 @@
-import { FilterValidationIssue } from './filter-format-validator.interface';
+import type { FilterValidationIssue } from './filter-format-validator.interface';
 
 export interface RegexComplexityPolicy {
   maxLength?: number;

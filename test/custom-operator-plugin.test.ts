@@ -1,3 +1,5 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Op } = require('sequelize');
@@ -13,7 +15,7 @@ const {
   createFilterIR,
   getDefaultFilterOperatorRegistry,
   registerFilterOperatorBundle,
-} = require('../dist/index.js');
+} = require('../lib/index.js');
 
 test.beforeEach(() => {
   getDefaultFilterOperatorRegistry().clear();

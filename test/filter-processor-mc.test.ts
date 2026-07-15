@@ -1,16 +1,18 @@
+// @ts-nocheck
+export {};
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
   FilterProcessor,
-} = require('../dist/core/services/filter-processor.service.js');
+} = require('../lib/core/services/filter-processor.service.js');
 const {
   FilterRegistry,
-} = require('../dist/core/services/filter-registry.service.js');
-const { MCFormat } = require('../dist/formats/mc/mc-format.service.js');
+} = require('../lib/core/services/filter-registry.service.js');
+const { MCFormat } = require('../lib/formats/mc/mc-format.service.js');
 const {
   MCFormatValidator,
-} = require('../dist/formats/mc/mc-format.validator.js');
+} = require('../lib/formats/mc/mc-format.validator.js');
 
 class MockAdapter {
   constructor() {
