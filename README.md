@@ -1,3 +1,5 @@
+![query-kit-core banner](./assets/query-kit-core-banner.png)
+
 # query-kit-core
 
 `query-kit-core` is the server-side package in the Query Kit family.
