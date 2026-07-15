@@ -92,6 +92,10 @@ Install the package:
 pnpm add query-kit-core
 ```
 
+```bash
+npm install query-kit-core
+```
+
 Install the runtime libraries your app actually uses:
 
 - Sequelize apps:
@@ -100,16 +104,28 @@ Install the runtime libraries your app actually uses:
 pnpm add sequelize
 ```
 
+```bash
+npm install sequelize
+```
+
 - Mongoose apps:
 
 ```bash
 pnpm add mongoose
 ```
 
+```bash
+npm install mongoose
+```
+
 - TypeORM apps:
 
 ```bash
 pnpm add typeorm
+```
+
+```bash
+npm install typeorm
 ```
 
 If you use NestJS, your app should already have:
