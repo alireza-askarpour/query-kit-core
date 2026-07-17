@@ -1,0 +1,45 @@
+{
+  "name": "query-kit-builder",
+  "version": "0.1.0",
+  "description": "Frontend query string and payload builder for query-kit-core.",
+  "main": "./lib/index.js",
+  "types": "./lib/index.d.ts",
+  "files": [
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "require": "./lib/index.js",
+      "default": "./lib/index.js"
+    }
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "rm -rf lib_tmp && tsc -p tsconfig.build.json --outDir lib_tmp && rm -rf lib && mv lib_tmp lib",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
+    "lint": "eslint \"src/**/*.ts\"",
+    "build:test": "rm -rf .tmp-test && tsc -p tsconfig.test.json && cp -R lib .tmp-test/lib",
+    "test": "pnpm build && pnpm build:test && node --test .tmp-test/test/**/*.test.js",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"*.{json,md}\""
+  },
+  "keywords": [
+    "frontend",
+    "query",
+    "filter",
+    "builder",
+    "query-string",
+    "nestjs",
+    "nodejs",
+    "typescript"
+  ],
+  "author": "Alireza Askarpour",
+  "license": "MIT",
+  "packageManager": "pnpm@10.22.0",
+  "engines": {
+    "node": ">=20"
+  }
+}

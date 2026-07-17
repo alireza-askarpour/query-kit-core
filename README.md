@@ -4,6 +4,11 @@
 
 `query-kit-core` is the server-side package in the Query Kit family.
 
+Related package:
+
+- `query-kit-builder` — frontend-side companion package for building query
+  strings and payloads compatible with `query-kit-core`
+
 It accepts filter payloads and query strings, parses them, validates them,
 normalizes them into a neutral filter IR, and converts that IR into ORM-native
 query structures for:
@@ -12,9 +17,10 @@ query structures for:
 - `Mongoose`
 - `TypeORM`
 
-This package is for backend/runtime use. A separate frontend package can build
-payloads and query strings, but this package is the one that parses and applies
-them.
+This package is for backend/runtime use. Frontend apps can use
+`query-kit-builder` to construct query strings and payloads, while
+`query-kit-core` is the package that parses, validates, normalizes, and applies
+them on the server.
 
 ---
 
@@ -82,6 +88,19 @@ Built-in feature coverage:
 - audit/diagnostic mode
 - custom operator extension APIs
 
+### Query Kit package roles
+
+- `query-kit-core`
+  - backend/runtime package
+  - parses and validates incoming filter input
+  - normalizes queries into filter IR
+  - converts filter IR into Sequelize, Mongoose, or TypeORM query structures
+- `query-kit-builder`
+  - frontend/client package
+  - builds `SC` and `MC` query strings
+  - builds payload objects and URL query parameters
+  - helps frontend developers generate requests compatible with `query-kit-core`
+
 ---
 
 ## Installation
@@ -94,6 +113,16 @@ pnpm add query-kit-core
 
 ```bash
 npm install query-kit-core
+```
+
+If you also want the frontend-side companion package:
+
+```bash
+pnpm add query-kit-builder
+```
+
+```bash
+npm install query-kit-builder
 ```
 
 Install the runtime libraries your app actually uses:
