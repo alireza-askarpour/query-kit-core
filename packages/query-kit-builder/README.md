@@ -142,12 +142,13 @@ import {
 import { createSCQueryBuilder } from 'query-kit-builder';
 
 const payload = createSCQueryBuilder()
-  .where('status', 'eq', 'active')
-  .sortDesc('createdAt')
+  .where('product.status', 'eq', 'active')
+  .where('product.price', 'between', [100, 500])
+  .sortDesc('product.createdAt')
   .limit(20)
   .page(2)
-  .fields('id', 'name', 'status')
-  .include('profile')
+  .fields('id', 'name', 'price', 'status')
+  .include('category')
   .buildPayload();
 ```
 
@@ -155,14 +156,14 @@ Result:
 
 ```ts
 {
-  filterString: 'status:eq:active',
-  sortString: 'createdAt:desc',
+  filterString: 'product.status:eq:active;product.price:between:100,500',
+  sortString: 'product.createdAt:desc',
   page: 2,
   size: 20,
   offset: undefined,
-  fields: ['id', 'name', 'status'],
-  relations: ['profile'],
-  customInclude: ['profile']
+  fields: ['id', 'name', 'price', 'status'],
+  relations: ['category'],
+  customInclude: ['category']
 }
 ```
 
@@ -172,17 +173,17 @@ Result:
 import { createMCQueryBuilder } from 'query-kit-builder';
 
 const query = createMCQueryBuilder()
-  .where('status', 'eq', 'active')
-  .where('tags', 'in', ['new', 'hot'])
-  .sortDesc('createdAt')
-  .populate('profile')
+  .where('product.status', 'eq', 'active')
+  .where('product.tags', 'in', ['new', 'hot'])
+  .sortDesc('product.createdAt')
+  .populate('category')
   .build();
 ```
 
 Result:
 
 ```text
-status:$eq:active;tags:$in:new,hot;@sort:-createdAt;@populate:profile
+product.status:$eq:active;product.tags:$in:new,hot;@sort:-product.createdAt;@populate:category
 ```
 
 ---

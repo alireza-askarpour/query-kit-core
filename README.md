@@ -193,7 +193,7 @@ const processor = new FilterProcessor(registry, {
 });
 
 const result = processor.processWith({
-  query: 'status:eq:active;price:between:100,200;@sort:-createdAt;@limit:20',
+  query: 'status:eq:active;price:between:100,200;brand:eq:nike;@sort:-createdAt;@limit:20',
   adapterOptions: {
     model: ProductModel,
     dialect: 'postgres',
@@ -236,7 +236,7 @@ const processor = new FilterProcessor(registry, {
 });
 
 const result = processor.processWith({
-  query: 'status:$eq:active;tags:$in:new,hot;@limit:10',
+  query: 'status:$eq:active;tags:$in:new,hot;category.name:$eq:electronics;@limit:10',
   adapterOptions: {
     model: ProductModel,
   },
@@ -475,6 +475,12 @@ processor.processWith({
   },
 });
 ```
+
+Return value depends on the selected adapter. For Sequelize and Mongoose this
+is the adapter-produced query object or query builder, while for TypeORM the
+adapter returns the same query builder instance after mutating it. In TypeORM
+flows, you still need to execute the builder yourself, for example with
+`.getManyAndCount()` or `.getMany()`.
 
 ### Request structure
 
@@ -1353,6 +1359,22 @@ Dialect notes:
 - `any`, `all`, `size` → `postgres`
 - common comparison/string/date operators → `postgres`, `mysql`, `sqlite`
 
+Example:
+
+```ts
+const options = processor.processWith({
+  query: 'status:eq:active;price:between:100,500;@sort:-price;@limit:20',
+  formatName: 'scfilter',
+  ormName: 'sequelize',
+  adapterOptions: {
+    model: ProductModel,
+    dialect: 'postgres',
+  },
+});
+
+const rows = await ProductModel.findAll(options);
+```
+
 ### Mongoose adapter
 
 Options:
@@ -1373,6 +1395,21 @@ Behavior:
 - aggregation filters require `aggregate()`
 - relations become `populate()`
 - `required` relations are not supported
+
+Example:
+
+```ts
+const query = processor.processWith({
+  query: 'status:$eq:active;tags:$in:new,featured;@sort:-createdAt;@limit:20',
+  formatName: 'mcfilter',
+  ormName: 'mongoose',
+  adapterOptions: {
+    model: ProductModel,
+  },
+});
+
+const products = await query.exec();
+```
 
 ### TypeORM adapter
 
@@ -1395,6 +1432,62 @@ Behavior:
 - mutates the provided query builder
 - supports joins, projection, pagination, sorting, aggregation, and case expressions
 - required joins may need `innerJoin()` / `innerJoinAndSelect()`
+
+### NestJS + TypeORM example
+
+Use a repository-backed query builder, pass it through `processWith()`, then
+execute the returned builder:
+
+```ts
+import { Injectable } from '@nestjs/common';
+import { SelectQueryBuilder } from 'typeorm';
+import { FilterProcessor } from 'query-kit-core';
+import { Product } from './product.entity';
+import { ProductQueryDto } from './product-query.dto';
+
+@Injectable()
+export class ProductsService {
+  constructor(
+    private readonly filterProcessor: FilterProcessor,
+    private readonly productsRepository: ProductsRepository,
+  ) {}
+
+  async findAll(queryDto: ProductQueryDto) {
+    const queryBuilder = this.productsRepository.createQueryBuilder('product');
+
+    const processedQueryBuilder = await this.filterProcessor.processWith<
+      SelectQueryBuilder<Product>
+    >({
+      query: queryDto,
+      adapterOptions: {
+        queryBuilder,
+        dialect: 'postgres',
+        rootAlias: 'product',
+      },
+    });
+
+    const [data, total] = await processedQueryBuilder.getManyAndCount();
+
+    return buildPaginatedResponse(data, queryDto, total);
+  }
+}
+```
+
+Repository helper:
+
+```ts
+createQueryBuilder(alias: string) {
+  return this.repository.createQueryBuilder(alias);
+}
+```
+
+Key points:
+
+- TypeORM adapter mutates the provided query builder
+- `processWith()` does not execute the query for you
+- the caller must run the returned builder, for example with
+  `.getManyAndCount()`, `.getMany()`, or `.getRawMany()`
+- `rootAlias` should match the alias used when creating the builder
 
 ---
 
