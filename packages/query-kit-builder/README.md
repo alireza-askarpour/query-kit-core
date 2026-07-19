@@ -1,10 +1,10 @@
-# query-kit-builder
+# @query-kit/builder
 
-`query-kit-builder` is the frontend-side companion package for
-`query-kit-core`.
+`@query-kit/builder` is the frontend-side companion package for
+`@query-kit/core`.
 
 It helps frontend developers build filter query strings, payload objects, and
-URL query parameters that are intentionally shaped for `query-kit-core`.
+URL query parameters that are intentionally shaped for `@query-kit/core`.
 
 This package does **not** parse or execute queries. It only constructs request
 input for the backend package.
@@ -16,7 +16,7 @@ input for the backend package.
 - [What this package does](#what-this-package-does)
 - [When to install it](#when-to-install-it)
 - [Installation](#installation)
-- [How it relates to query-kit-core](#how-it-relates-to-query-kit-core)
+- [How it relates to @query-kit/core](#how-it-relates-to-query-kitcore)
 - [Exports](#exports)
 - [Quick start](#quick-start)
 - [SC builder](#sc-builder)
@@ -37,13 +37,13 @@ input for the backend package.
 
 ## What this package does
 
-`query-kit-builder` builds request input for APIs that use `query-kit-core`.
+`@query-kit/builder` builds request input for APIs that use `@query-kit/core`.
 
 It supports:
 
 - `SC` query string generation
 - `MC` query string generation
-- payload objects compatible with `query-kit-core`
+- payload objects compatible with `@query-kit/core`
 - `URLSearchParams` output for HTTP requests
 - sort, page, limit, offset, fields
 - include / populate directives
@@ -64,15 +64,15 @@ It is designed for:
 
 ## When to install it
 
-Install `query-kit-builder` when:
+Install `@query-kit/builder` when:
 
 - your frontend needs to build filter query strings
 - your frontend needs to build payload objects for a backend endpoint
-- your backend already uses `query-kit-core`
+- your backend already uses `@query-kit/core`
 - you want one consistent query contract between frontend and backend
 
 Do **not** install this package just to parse or validate filters on the
-backend. That is the job of `query-kit-core`.
+backend. That is the job of `@query-kit/core`.
 
 ---
 
@@ -81,13 +81,13 @@ backend. That is the job of `query-kit-core`.
 ### `pnpm`
 
 ```bash
-pnpm add query-kit-builder
+pnpm add @query-kit/builder
 ```
 
 ### `npm`
 
 ```bash
-npm install query-kit-builder
+npm install @query-kit/builder
 ```
 
 This package has no ORM dependency, because it does not execute queries. It
@@ -95,21 +95,21 @@ only builds strings and payloads.
 
 ---
 
-## How it relates to query-kit-core
+## How it relates to @query-kit/core
 
 The two packages are complementary but independent:
 
-- `query-kit-builder`
+- `@query-kit/builder`
   - frontend/client package
   - builds query strings and payloads
-- `query-kit-core`
+- `@query-kit/core`
   - backend/runtime package
   - parses, validates, normalizes, and converts those queries
 
 Typical architecture:
 
-- frontend app → install `query-kit-builder`
-- backend app → install `query-kit-core`
+- frontend app → install `@query-kit/builder`
+- backend app → install `@query-kit/core`
 
 ---
 
@@ -129,7 +129,7 @@ Example:
 import {
   createSCQueryBuilder,
   createMCQueryBuilder,
-} from 'query-kit-builder';
+} from '@query-kit/builder';
 ```
 
 ---
@@ -139,7 +139,7 @@ import {
 ### `SC` quick start
 
 ```ts
-import { createSCQueryBuilder } from 'query-kit-builder';
+import { createSCQueryBuilder } from '@query-kit/builder';
 
 const payload = createSCQueryBuilder()
   .where('product.status', 'eq', 'active')
@@ -170,7 +170,7 @@ Result:
 ### `MC` quick start
 
 ```ts
-import { createMCQueryBuilder } from 'query-kit-builder';
+import { createMCQueryBuilder } from '@query-kit/builder';
 
 const query = createMCQueryBuilder()
   .where('product.status', 'eq', 'active')
@@ -191,7 +191,7 @@ product.status:$eq:active;product.tags:$in:new,hot;@sort:-product.createdAt;@pop
 ## SC builder
 
 `SC` builds SQL-style filter strings compatible with the `scfilter` format in
-`query-kit-core`.
+`@query-kit/core`.
 
 ### Available methods
 
@@ -294,7 +294,7 @@ tags:in:new,hot
 ## MC builder
 
 `MC` builds Mongo-style filter strings compatible with the `mcfilter` format in
-`query-kit-core`.
+`@query-kit/core`.
 
 ### Available methods
 
@@ -403,7 +403,7 @@ status:eq:active;@sort:-createdAt;@limit:10
 
 ### `buildPayload()`
 
-Returns a payload object compatible with `query-kit-core`.
+Returns a payload object compatible with `@query-kit/core`.
 
 By default:
 
@@ -453,7 +453,7 @@ type QueryPayload = {
 };
 ```
 
-This shape is intentionally aligned with `query-kit-core`.
+This shape is intentionally aligned with `@query-kit/core`.
 
 ---
 
@@ -835,8 +835,8 @@ For most applications:
 
 Recommended split:
 
-- frontend → `query-kit-builder`
-- backend → `query-kit-core`
+- frontend → `@query-kit/builder`
+- backend → `@query-kit/core`
 
 This keeps request generation on the client and parsing/execution on the
 server.
