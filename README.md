@@ -6,7 +6,7 @@
 
 Related package:
 
-- `query-kit-builder` — frontend-side companion package for building query
+- `query-kit-encoder` — frontend-side companion package for building query
   strings and payloads compatible with `query-kit-core`
 
 It accepts filter payloads and query strings, parses them, validates them,
@@ -18,7 +18,7 @@ query structures for:
 - `TypeORM`
 
 This package is for backend/runtime use. Frontend apps can use
-`query-kit-builder` to construct query strings and payloads, while
+`query-kit-encoder` to construct query strings and payloads, while
 `query-kit-core` is the package that parses, validates, normalizes, and applies
 them on the server.
 
@@ -97,7 +97,7 @@ Built-in feature coverage:
   - parses and validates incoming filter input
   - normalizes queries into filter IR
   - converts filter IR into Sequelize, Mongoose, or TypeORM query structures
-- `query-kit-builder`
+- `query-kit-encoder`
   - frontend/client package
   - builds `SC` and `MC` query strings
   - builds payload objects and URL query parameters
@@ -120,11 +120,11 @@ npm install query-kit-core
 If you also want the frontend-side companion package:
 
 ```bash
-pnpm add query-kit-builder
+pnpm add query-kit-encoder
 ```
 
 ```bash
-npm install query-kit-builder
+npm install query-kit-encoder
 ```
 
 Install the runtime libraries your app actually uses:

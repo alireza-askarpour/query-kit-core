@@ -1,6 +1,6 @@
-# query-kit-builder
+# query-kit-encoder
 
-`query-kit-builder` is the frontend-side companion package for
+`query-kit-encoder` is the frontend-side companion package for
 `query-kit-core`.
 
 It helps frontend developers build filter query strings, payload objects, and
@@ -37,7 +37,7 @@ input for the backend package.
 
 ## What this package does
 
-`query-kit-builder` builds request input for APIs that use `query-kit-core`.
+`query-kit-encoder` builds request input for APIs that use `query-kit-core`.
 
 It supports:
 
@@ -64,7 +64,7 @@ It is designed for:
 
 ## When to install it
 
-Install `query-kit-builder` when:
+Install `query-kit-encoder` when:
 
 - your frontend needs to build filter query strings
 - your frontend needs to build payload objects for a backend endpoint
@@ -81,13 +81,13 @@ backend. That is the job of `query-kit-core`.
 ### `pnpm`
 
 ```bash
-pnpm add query-kit-builder
+pnpm add query-kit-encoder
 ```
 
 ### `npm`
 
 ```bash
-npm install query-kit-builder
+npm install query-kit-encoder
 ```
 
 This package has no ORM dependency, because it does not execute queries. It
@@ -99,7 +99,7 @@ only builds strings and payloads.
 
 The two packages are complementary but independent:
 
-- `query-kit-builder`
+- `query-kit-encoder`
   - frontend/client package
   - builds query strings and payloads
 - `query-kit-core`
@@ -108,7 +108,7 @@ The two packages are complementary but independent:
 
 Typical architecture:
 
-- frontend app → install `query-kit-builder`
+- frontend app → install `query-kit-encoder`
 - backend app → install `query-kit-core`
 
 ---
@@ -129,7 +129,7 @@ Example:
 import {
   createSCQueryBuilder,
   createMCQueryBuilder,
-} from 'query-kit-builder';
+} from 'query-kit-encoder';
 ```
 
 ---
@@ -139,7 +139,7 @@ import {
 ### `SC` quick start
 
 ```ts
-import { createSCQueryBuilder } from 'query-kit-builder';
+import { createSCQueryBuilder } from 'query-kit-encoder';
 
 const payload = createSCQueryBuilder()
   .where('product.status', 'eq', 'active')
@@ -170,7 +170,7 @@ Result:
 ### `MC` quick start
 
 ```ts
-import { createMCQueryBuilder } from 'query-kit-builder';
+import { createMCQueryBuilder } from 'query-kit-encoder';
 
 const query = createMCQueryBuilder()
   .where('product.status', 'eq', 'active')
@@ -835,7 +835,7 @@ For most applications:
 
 Recommended split:
 
-- frontend → `query-kit-builder`
+- frontend → `query-kit-encoder`
 - backend → `query-kit-core`
 
 This keeps request generation on the client and parsing/execution on the
