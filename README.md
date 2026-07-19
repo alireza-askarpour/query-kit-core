@@ -1,13 +1,13 @@
 ![query-kit core banner](./assets/query-kit-core-banner.png)
 
-# @query-kit/core
+# query-kit-core
 
-`@query-kit/core` is the server-side package in the Query Kit family.
+`query-kit-core` is the server-side package in the Query Kit family.
 
 Related package:
 
-- `@query-kit/builder` — frontend-side companion package for building query
-  strings and payloads compatible with `@query-kit/core`
+- `query-kit-builder` — frontend-side companion package for building query
+  strings and payloads compatible with `query-kit-core`
 
 It accepts filter payloads and query strings, parses them, validates them,
 normalizes them into a neutral filter IR, and converts that IR into ORM-native
@@ -18,8 +18,8 @@ query structures for:
 - `TypeORM`
 
 This package is for backend/runtime use. Frontend apps can use
-`@query-kit/builder` to construct query strings and payloads, while
-`@query-kit/core` is the package that parses, validates, normalizes, and applies
+`query-kit-builder` to construct query strings and payloads, while
+`query-kit-core` is the package that parses, validates, normalizes, and applies
 them on the server.
 
 ---
@@ -57,7 +57,7 @@ them on the server.
 
 ## What this package does
 
-`@query-kit/core` solves the backend half of filter/query handling:
+`query-kit-core` solves the backend half of filter/query handling:
 
 1. Accept a filter string or structured query object.
 2. Parse one of the built-in formats:
@@ -92,16 +92,16 @@ Built-in feature coverage:
 
 ### Query Kit package roles
 
-- `@query-kit/core`
+- `query-kit-core`
   - backend/runtime package
   - parses and validates incoming filter input
   - normalizes queries into filter IR
   - converts filter IR into Sequelize, Mongoose, or TypeORM query structures
-- `@query-kit/builder`
+- `query-kit-builder`
   - frontend/client package
   - builds `SC` and `MC` query strings
   - builds payload objects and URL query parameters
-  - helps frontend developers generate requests compatible with `@query-kit/core`
+  - helps frontend developers generate requests compatible with `query-kit-core`
 
 ---
 
@@ -110,21 +110,21 @@ Built-in feature coverage:
 Install the package:
 
 ```bash
-pnpm add @query-kit/core
+pnpm add query-kit-core
 ```
 
 ```bash
-npm install @query-kit/core
+npm install query-kit-core
 ```
 
 If you also want the frontend-side companion package:
 
 ```bash
-pnpm add @query-kit/builder
+pnpm add query-kit-builder
 ```
 
 ```bash
-npm install @query-kit/builder
+npm install query-kit-builder
 ```
 
 Install the runtime libraries your app actually uses:
@@ -177,7 +177,7 @@ import {
   SCFormat,
   SCFormatValidator,
   SequelizeAdapter,
-} from '@query-kit/core';
+} from 'query-kit-core';
 
 const registry = new FilterRegistry();
 
@@ -220,7 +220,7 @@ import {
   MCFormat,
   MCFormatValidator,
   MongooseAdapter,
-} from '@query-kit/core';
+} from 'query-kit-core';
 
 const registry = new FilterRegistry();
 
@@ -260,7 +260,7 @@ const result = processor.processWith({
 
 ```ts
 import { Module } from '@nestjs/common';
-import { FilterModule } from '@query-kit/core';
+import { FilterModule } from 'query-kit-core';
 
 @Module({
   imports: [
@@ -298,7 +298,7 @@ Inject and use `FilterProcessor`:
 
 ```ts
 import { Injectable } from '@nestjs/common';
-import { FilterProcessor } from '@query-kit/core';
+import { FilterProcessor } from 'query-kit-core';
 
 @Injectable()
 export class ProductsService {
@@ -2084,7 +2084,7 @@ Full NestJS example:
 
 ```ts
 import { Injectable } from '@nestjs/common';
-import { FilterProcessor } from '@query-kit/core';
+import { FilterProcessor } from 'query-kit-core';
 import { Product } from './product.entity';
 
 @Injectable()
@@ -2182,7 +2182,7 @@ Full NestJS example:
 
 ```ts
 import { Injectable } from '@nestjs/common';
-import { FilterProcessor } from '@query-kit/core';
+import { FilterProcessor } from 'query-kit-core';
 
 @Injectable()
 export class ProductsService {
@@ -2272,7 +2272,7 @@ Full NestJS example:
 ```ts
 import { Injectable } from '@nestjs/common';
 import { SelectQueryBuilder } from 'typeorm';
-import { FilterProcessor } from '@query-kit/core';
+import { FilterProcessor } from 'query-kit-core';
 import { Product } from './product.entity';
 
 @Injectable()
@@ -2646,7 +2646,7 @@ You can extend formats and adapters without changing package core.
 ### Register a bundle
 
 ```ts
-import { registerFilterOperatorBundle } from '@query-kit/core';
+import { registerFilterOperatorBundle } from 'query-kit-core';
 
 registerFilterOperatorBundle({
   operator: 'jsonContains',
@@ -2679,7 +2679,7 @@ registerFilterOperatorBundle({
 ### Register only a format operator
 
 ```ts
-import { registerFormatOperator } from '@query-kit/core';
+import { registerFormatOperator } from 'query-kit-core';
 
 registerFormatOperator('mcfilter', {
   operator: 'geoWithin',
@@ -2692,7 +2692,7 @@ registerFormatOperator('mcfilter', {
 ### Register only an adapter operator
 
 ```ts
-import { registerAdapterOperator } from '@query-kit/core';
+import { registerAdapterOperator } from 'query-kit-core';
 
 registerAdapterOperator('mongoose', {
   operator: 'geoWithin',
@@ -2845,6 +2845,6 @@ For most applications:
 
 ## Canonical documentation note
 
-This README is the canonical user documentation for `@query-kit/core`. The
+This README is the canonical user documentation for `query-kit-core`. The
 previous scattered Markdown documentation has been removed, and future package
 documentation should be based on this document.

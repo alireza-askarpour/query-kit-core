@@ -1,7 +1,7 @@
 {
-  "name": "@query-kit/builder",
+  "name": "query-kit-builder",
   "version": "0.1.0",
-  "description": "Frontend query string and payload builder for @query-kit/core.",
+  "description": "Frontend query string and payload builder for query-kit-core.",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
   "files": [
