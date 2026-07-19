@@ -20,6 +20,7 @@ material.
 
 - [Core concepts](../README.md#core-concepts)
 - [Main processing API](../README.md#main-processing-api)
+- [Type and option reference](../README.md#type-and-option-reference)
 - [Query object shape](../README.md#query-object-shape)
 - [Built-in formats](../README.md#built-in-formats)
 
@@ -41,6 +42,10 @@ material.
 ## Adapters and extensibility
 
 - [Adapter reference](../README.md#adapter-reference)
+- [Adapter cookbook](../README.md#adapter-cookbook)
+- [Sequelize adapter](../README.md#sequelize-adapter)
+- [Mongoose adapter](../README.md#mongoose-adapter)
+- [TypeORM adapter](../README.md#typeorm-adapter)
 - [Audit mode](../README.md#audit-mode)
 - [Custom operators and extension points](../README.md#custom-operators-and-extension-points)
 - [Public exports](../README.md#public-exports)
@@ -50,4 +55,3 @@ material.
 - [Limitations and compatibility notes](../README.md#limitations-and-compatibility-notes)
 - [Troubleshooting](../README.md#troubleshooting)
 - [Recommended usage pattern](../README.md#recommended-usage-pattern)
-
