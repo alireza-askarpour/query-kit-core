@@ -44,6 +44,14 @@
   ],
   "author": "Alireza Askarpour",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alireza-askarpour/query-kit.git"
+  },
+  "homepage": "https://github.com/alireza-askarpour/query-kit#readme",
+  "bugs": {
+    "url": "https://github.com/alireza-askarpour/query-kit/issues"
+  },
   "packageManager": "pnpm@10.22.0",
   "engines": {
     "node": ">=20"
