@@ -1,6 +1,6 @@
 {
   "name": "query-kit-core",
-  "version": "0.1.0",
+  "version": "1.0.3",
   "description": "Extensible query filter parser and adapter pipeline for NestJS applications.",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
