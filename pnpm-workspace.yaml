@@ -2,4 +2,4 @@ packages:
   - '.'
   - 'packages/*'
 
-storeDir: /private/tmp/query-request-pnpm-store
+storeDir: ./.pnpm-store
